@@ -1318,9 +1318,13 @@ export default function App() {
       {addSt&&(
         <div className="aform">
           <div style={{fontSize:12,fontWeight:800,marginBottom:10}}>新規スタッフ追加</div>
-          <div className="afr">
+          <div className="afr" onKeyDown={e=>{ if(e.key==="Enter"&&!e.nativeEvent.isComposing) e.preventDefault(); }}>
             <div className="aff" style={{minWidth:120}}><label>氏名</label>
-              <input value={newSt.name} onChange={e=>setNewSt(n=>({...n,name:e.target.value}))} placeholder="例：田中 花子"/>
+              <input value={newSt.name}
+                onChange={e=>setNewSt(n=>({...n,name:e.target.value}))}
+                onCompositionStart={()=>{}}
+                onCompositionEnd={()=>{}}
+                placeholder="例：田中 花子"/>
             </div>
             <div className="aff" style={{maxWidth:100}}><label>役職</label>
               <select value={newSt.role} onChange={e=>setNewSt(n=>({...n,role:e.target.value}))}>
@@ -1480,12 +1484,12 @@ export default function App() {
           </div>
         </header>
         <main className="main">
-          {tab==="shift"  && <ShiftTab/>}
-          {tab==="kyosei" && isA && <KyoseiTab/>}
-          {tab==="flex"   && isA && <FlexTab/>}
-          {tab==="paid"   && <PaidTab/>}
-          {tab==="wish"   && <WishTab/>}
-          {tab==="staff"  && isA && <StaffTab/>}
+          {tab==="shift"  && ShiftTab()}
+          {tab==="kyosei" && isA && KyoseiTab()}
+          {tab==="flex"   && isA && FlexTab()}
+          {tab==="paid"   && PaidTab()}
+          {tab==="wish"   && WishTab()}
+          {tab==="staff"  && isA && StaffTab()}
         </main>
 
         {modal&&isA&&(
