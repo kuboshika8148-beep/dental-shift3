@@ -578,6 +578,41 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--txt)
   align-items:center;gap:2px;transition:color .15s;}
 .mob-nav button.on{color:#38bdf8;}
 .mob-nav button span{font-size:20px;line-height:1;}
+
+/* KOT連携 */
+.kot-wrap{background:var(--surf);border-radius:var(--r);border:1px solid var(--bdr);
+  padding:18px 20px;margin-bottom:14px;box-shadow:var(--sh);}
+.kot-step{display:flex;gap:10px;align-items:flex-start;margin-bottom:10px;}
+.kot-num{width:24px;height:24px;border-radius:50%;background:#0f4c8a;color:#fff;
+  font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;}
+.kot-body{flex:1;}
+.kot-body h4{font-size:12px;font-weight:800;color:var(--txt);margin-bottom:3px;}
+.kot-body p{font-size:11px;color:var(--mut);line-height:1.6;}
+.kot-body code{background:#f1f5f9;padding:1px 5px;border-radius:3px;font-size:10px;
+  font-family:'JetBrains Mono',monospace;color:#0f4c8a;}
+.drop-zone{border:2px dashed #cbd5e1;border-radius:10px;padding:28px;text-align:center;
+  cursor:pointer;transition:all .2s;background:#f8fafc;margin-top:8px;}
+.drop-zone:hover,.drop-zone.drag{border-color:#38bdf8;background:#f0f9ff;}
+.drop-zone .dico{font-size:28px;margin-bottom:6px;}
+.drop-zone p{font-size:12px;color:var(--mut);}
+.drop-zone small{font-size:10px;color:#94a3b8;}
+.kot-result{background:var(--surf);border-radius:var(--r);border:1px solid var(--bdr);
+  overflow:hidden;box-shadow:var(--sh);}
+.kot-tbl{width:100%;border-collapse:collapse;font-size:11px;}
+.kot-tbl th{background:#0c1a2e;color:#fff;padding:8px 10px;font-size:9px;
+  font-weight:800;text-align:left;white-space:nowrap;}
+.kot-tbl td{padding:7px 10px;border-bottom:1px solid #f1f5f9;vertical-align:middle;}
+.kot-tbl tr:hover td{background:#f8fafc;}
+.diff-ok{color:#15803d;font-weight:700;font-family:'JetBrains Mono',monospace;}
+.diff-late{color:#dc2626;font-weight:700;}
+.diff-early{color:#d97706;font-weight:700;}
+.diff-over{color:#7c3aed;font-weight:700;}
+.diff-badge{display:inline-block;padding:1px 6px;border-radius:10px;font-size:9px;font-weight:800;margin:1px;}
+.sum-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:14px;}
+.sum-card{background:var(--surf);border-radius:10px;border:1px solid var(--bdr);
+  padding:12px 14px;box-shadow:var(--sh);}
+.sum-card .sv{font-size:22px;font-weight:900;font-family:'JetBrains Mono',monospace;line-height:1.1;}
+.sum-card .sl{font-size:9px;color:var(--mut);font-weight:600;margin-top:2px;}
 `;
 
 // ═══════════════════════════════════════════════════════
@@ -614,6 +649,7 @@ export default function App() {
   const [wModal,  setWModal]  = useState(null);
   const [addSt,   setAddSt]   = useState(false);
   const [newSt,   setNewSt]   = useState({name:"",role:"Dh",leave:10,birthDate:"",joinYear:new Date().getFullYear(),employment:"正社員",weeklyDaysOff:2});
+  const [kotData, setKotData] = useState(null); // KING OF TIME 打刻データ
 
   const D=dim(year,month);
   const dH=useMemo(()=>dailyH(wh),[wh]);
@@ -1453,11 +1489,332 @@ export default function App() {
     </div>
   );
 
+  // ── KOT TAB ────────────────────────────────
+  const KotTab=()=>{
+    const [drag,setDrag]=useState(false);
+
+    // KING OF TIME CSVパーサー
+    // KOTの月別勤怠CSVフォーマットに対応
+    function parseKotCsv(text){
+      const lines=text.split(/\r?\n/).filter(l=>l.trim());
+      if(lines.length<2) return null;
+
+      // ヘッダー行を探す（「従業員番号」or「氏名」or「日付」を含む行）
+      let headerIdx=lines.findIndex(l=>l.includes("氏名")||l.includes("日付")||l.includes("出勤"));
+      if(headerIdx<0) headerIdx=0;
+      const headers=lines[headerIdx].split(",").map(h=>h.replace(/"/g,"").trim());
+
+      const records=[];
+      for(let i=headerIdx+1;i<lines.length;i++){
+        const cols=lines[i].split(",").map(c=>c.replace(/"/g,"").trim());
+        if(cols.every(c=>!c)) continue;
+        const rec={};
+        headers.forEach((h,idx)=>{ rec[h]=cols[idx]||""; });
+        records.push(rec);
+      }
+
+      // カラム名の正規化（KOTのCSV出力形式に合わせる）
+      const nameKey=headers.find(h=>h.includes("氏名")||h==="名前")||headers[1]||"";
+      const dateKey=headers.find(h=>h.includes("日付")||h.includes("年月日"))||"";
+      const inKey =headers.find(h=>h.includes("出勤時刻")||h.includes("出勤")&&h.includes("時"))||"";
+      const outKey=headers.find(h=>h.includes("退勤時刻")||h.includes("退勤")&&h.includes("時"))||"";
+      const workKey=headers.find(h=>h.includes("実労働")||h.includes("労働時間"))||"";
+      const overtimeKey=headers.find(h=>h.includes("残業")||h.includes("時間外"))||"";
+      const leaveKey=headers.find(h=>h.includes("有給")||h.includes("休暇種別"))||"";
+
+      // スタッフ別に集計
+      const byStaff={};
+      records.forEach(r=>{
+        const name=(r[nameKey]||"").trim();
+        if(!name) return;
+        if(!byStaff[name]) byStaff[name]={name,records:[],totalWork:0,overtime:0,lateCount:0,earlyCount:0,paidLeave:0};
+        const rec={
+          date:r[dateKey]||"",
+          in:r[inKey]||"",
+          out:r[outKey]||"",
+          work:r[workKey]||"",
+          overtime:r[overtimeKey]||"",
+          leave:r[leaveKey]||"",
+        };
+        byStaff[name].records.push(rec);
+
+        // 実労働時間集計
+        if(rec.work){
+          const [hh,mm]=(rec.work+":0").split(":").map(Number);
+          byStaff[name].totalWork+=hh+(mm||0)/60;
+        }
+        // 残業時間集計
+        if(rec.overtime){
+          const [hh,mm]=(rec.overtime+":0").split(":").map(Number);
+          byStaff[name].overtime+=hh+(mm||0)/60;
+        }
+        // 有給カウント
+        if(rec.leave&&(rec.leave.includes("有給")||rec.leave.includes("年休"))) byStaff[name].paidLeave++;
+
+        // 遅刻チェック（予定出勤8:45より10分以上遅い）
+        if(rec.in){
+          const [hh,mm]=rec.in.split(":").map(Number);
+          const inMin=hh*60+mm;
+          if(inMin>8*60+55) byStaff[name].lateCount++;
+        }
+        // 早退チェック（平日18:30より30分以上早い退勤）
+        if(rec.out){
+          const [hh,mm]=rec.out.split(":").map(Number);
+          const outMin=hh*60+mm;
+          const dow=rec.date?new Date(rec.date).getDay():1;
+          const expectedEnd=dow===6?15*60+30:18*60+30;
+          if(outMin<expectedEnd-30) byStaff[name].earlyCount++;
+        }
+      });
+
+      return {byStaff,headers,nameKey,dateKey,inKey,outKey,workKey};
+    }
+
+    function handleFile(file){
+      if(!file||!file.name.match(/\.csv$/i)){toast_("CSVファイルを選択してください");return;}
+      const reader=new FileReader();
+      reader.onload=e=>{
+        try{
+          const result=parseKotCsv(e.target.result);
+          if(!result||Object.keys(result.byStaff).length===0){
+            toast_("データを読み取れませんでした。KOTのCSV形式を確認してください");
+            return;
+          }
+          setKotData(result);
+          // 有給を自動反映
+          let updated=0;
+          Object.values(result.byStaff).forEach(ks=>{
+            if(ks.paidLeave>0){
+              const matched=staff.find(s=>s.name===ks.name||ks.name.includes(s.name.replace(" ",""))||s.name.includes(ks.name.replace(" ","")));
+              if(matched){
+                setStaff(ps=>ps.map(s=>s.id===matched.id?{...s,used:Math.min(s.leave,ks.paidLeave)}:s));
+                updated++;
+              }
+            }
+          });
+          toast_(`✅ 打刻データを読み込みました${updated>0?`（有給${updated}名を自動反映）`:""}`);
+        }catch(err){
+          toast_("CSVの読み込みに失敗しました");
+        }
+      };
+      reader.readAsText(file,"Shift_JIS");
+    }
+
+    const staffList=kotData?Object.values(kotData.byStaff):[];
+    const totalOT=staffList.reduce((a,s)=>a+s.overtime,0);
+    const lateTotal=staffList.reduce((a,s)=>a+s.lateCount,0);
+    const earlyTotal=staffList.reduce((a,s)=>a+s.earlyCount,0);
+
+    return (
+      <div>
+        <div className="ph">
+          <div className="ptitle">KING OF TIME 打刻連携</div>
+          {kotData&&<button className="cbtn" onClick={()=>setKotData(null)}>🗑 データをクリア</button>}
+        </div>
+
+        {/* 手順説明 */}
+        <div className="kot-wrap">
+          <div className="cpt">📋 KING OF TIMEからCSVをダウンロードする手順</div>
+          <div className="kot-step">
+            <div className="kot-num">1</div>
+            <div className="kot-body">
+              <h4>KING OF TIMEにログイン</h4>
+              <p><a href="https://s2.ta.kingoftime.jp/admin" target="_blank" rel="noreferrer" style={{color:"#0f4c8a"}}>管理画面</a>を開く</p>
+            </div>
+          </div>
+          <div className="kot-step">
+            <div className="kot-num">2</div>
+            <div className="kot-body">
+              <h4>月別勤怠データを開く</h4>
+              <p>「勤怠」→「月別勤怠」→ 対象月を選択</p>
+            </div>
+          </div>
+          <div className="kot-step">
+            <div className="kot-num">3</div>
+            <div className="kot-body">
+              <h4>CSVエクスポート</h4>
+              <p>画面右上の「CSV出力」ボタンをクリック → <code>勤怠データ_YYYYMM.csv</code> をダウンロード</p>
+            </div>
+          </div>
+          <div className="kot-step" style={{marginBottom:0}}>
+            <div className="kot-num">4</div>
+            <div className="kot-body">
+              <h4>下のエリアにアップロード</h4>
+              <p>ダウンロードしたCSVファイルをドラッグ＆ドロップ、またはクリックして選択</p>
+            </div>
+          </div>
+        </div>
+
+        {/* ドロップゾーン */}
+        {!kotData&&(
+          <div className="kot-wrap">
+            <div
+              className={`drop-zone ${drag?"drag":""}`}
+              onDragOver={e=>{e.preventDefault();setDrag(true);}}
+              onDragLeave={()=>setDrag(false)}
+              onDrop={e=>{e.preventDefault();setDrag(false);handleFile(e.dataTransfer.files[0]);}}
+              onClick={()=>document.getElementById("kot-file-input").click()}
+            >
+              <div className="dico">📂</div>
+              <p>CSVファイルをここにドラッグ＆ドロップ</p>
+              <small>またはクリックしてファイルを選択（Shift_JIS / UTF-8 対応）</small>
+            </div>
+            <input id="kot-file-input" type="file" accept=".csv" style={{display:"none"}}
+              onChange={e=>handleFile(e.target.files[0])}/>
+          </div>
+        )}
+
+        {/* 結果表示 */}
+        {kotData&&(
+          <>
+            {/* サマリーカード */}
+            <div className="sum-cards">
+              <div className="sum-card">
+                <div className="sv" style={{color:"#0f4c8a"}}>{staffList.length}<small style={{fontSize:12,fontWeight:400}}> 名</small></div>
+                <div className="sl">読み込んだスタッフ数</div>
+              </div>
+              <div className="sum-card">
+                <div className="sv" style={{color:"#dc2626"}}>{lateTotal}<small style={{fontSize:12,fontWeight:400}}> 件</small></div>
+                <div className="sl">遅刻（8:55以降出勤）</div>
+              </div>
+              <div className="sum-card">
+                <div className="sv" style={{color:"#d97706"}}>{earlyTotal}<small style={{fontSize:12,fontWeight:400}}> 件</small></div>
+                <div className="sl">早退（30分以上早い退勤）</div>
+              </div>
+              <div className="sum-card">
+                <div className="sv" style={{color:"#7c3aed"}}>{Math.round(totalOT*10)/10}<small style={{fontSize:12,fontWeight:400}}> h</small></div>
+                <div className="sl">月間残業時間合計</div>
+              </div>
+            </div>
+
+            {/* スタッフ別一覧 */}
+            <div className="kot-result">
+              <table className="kot-tbl">
+                <thead>
+                  <tr>
+                    <th>氏名</th>
+                    <th>実労働時間</th>
+                    <th>予定時間(月標準)</th>
+                    <th>差異</th>
+                    <th>残業</th>
+                    <th>遅刻</th>
+                    <th>早退</th>
+                    <th>有給取得</th>
+                    <th>有給反映</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {staffList.map((ks,i)=>{
+                    const matched=staff.find(s=>s.name===ks.name||ks.name.replace(/\s/g,"")===s.name.replace(/\s/g,""));
+                    const diff=matched?Math.round((ks.totalWork-stdH)*10)/10:null;
+                    return (
+                      <tr key={i}>
+                        <td style={{fontWeight:700}}>
+                          {ks.name}
+                          {matched
+                            ?<span style={{marginLeft:4,fontSize:9,background:ROLES[matched.role]?.bg,color:ROLES[matched.role]?.color,padding:"1px 5px",borderRadius:6,fontWeight:800}}>{matched.role}</span>
+                            :<span style={{marginLeft:4,fontSize:9,background:"#fee2e2",color:"#dc2626",padding:"1px 5px",borderRadius:6,fontWeight:800}}>未照合</span>
+                          }
+                        </td>
+                        <td><span className="hcol" style={{fontFamily:"JetBrains Mono,monospace",fontWeight:700}}>{Math.round(ks.totalWork*10)/10}h</span></td>
+                        <td style={{color:"var(--mut)",fontFamily:"JetBrains Mono,monospace"}}>{stdH}h</td>
+                        <td>
+                          {diff!==null&&(
+                            <span className={diff>0?"diff-over":diff<-8?"diff-early":"diff-ok"}>
+                              {diff>0?"+":""}{diff}h
+                            </span>
+                          )}
+                        </td>
+                        <td><span className="diff-over">{Math.round(ks.overtime*10)/10}h</span></td>
+                        <td>
+                          {ks.lateCount>0
+                            ?<span className="diff-badge" style={{background:"#fee2e2",color:"#dc2626"}}>{ks.lateCount}回</span>
+                            :<span style={{color:"#94a3b8",fontSize:10}}>なし</span>}
+                        </td>
+                        <td>
+                          {ks.earlyCount>0
+                            ?<span className="diff-badge" style={{background:"#fef3c7",color:"#b45309"}}>{ks.earlyCount}回</span>
+                            :<span style={{color:"#94a3b8",fontSize:10}}>なし</span>}
+                        </td>
+                        <td style={{fontFamily:"JetBrains Mono,monospace",fontWeight:700,color:"#d97706"}}>{ks.paidLeave}日</td>
+                        <td>
+                          {matched&&ks.paidLeave>0?(
+                            <button className="pa g" onClick={()=>{
+                              setStaff(ps=>ps.map(s=>s.id===matched.id?{...s,used:Math.min(s.leave,ks.paidLeave)}:s));
+                              toast_(`${ks.name} の有給を${ks.paidLeave}日に更新しました`);
+                            }}>反映</button>
+                          ):<span style={{color:"#94a3b8",fontSize:10}}>—</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* 日別詳細（アコーディオン） */}
+            <div style={{marginTop:14}}>
+              <div className="sdiv">スタッフ別 日次詳細</div>
+              {staffList.map((ks,i)=>{
+                const matched=staff.find(s=>s.name===ks.name||ks.name.replace(/\s/g,"")===s.name.replace(/\s/g,""));
+                const rv=matched?ROLES[matched.role]:null;
+                return (
+                  <details key={i} style={{marginBottom:6,background:"var(--surf)",borderRadius:8,border:"1px solid var(--bdr)"}}>
+                    <summary style={{padding:"10px 14px",cursor:"pointer",fontWeight:700,fontSize:12,listStyle:"none",display:"flex",alignItems:"center",gap:8}}>
+                      <span>{ks.name}</span>
+                      {rv&&<span style={{background:rv.bg,color:rv.color,fontSize:8,padding:"1px 5px",borderRadius:6,fontWeight:800}}>{matched.role}</span>}
+                      <span style={{marginLeft:"auto",fontSize:10,color:"var(--mut)"}}>実労働 {Math.round(ks.totalWork*10)/10}h ／ 残業 {Math.round(ks.overtime*10)/10}h ／ 遅刻 {ks.lateCount}回</span>
+                    </summary>
+                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                      <thead>
+                        <tr style={{background:"#f7f9fc"}}>
+                          <th style={{padding:"5px 10px",textAlign:"left",fontSize:9,fontWeight:800,color:"var(--mut)"}}>日付</th>
+                          <th style={{padding:"5px 10px",fontSize:9,fontWeight:800,color:"var(--mut)"}}>出勤</th>
+                          <th style={{padding:"5px 10px",fontSize:9,fontWeight:800,color:"var(--mut)"}}>退勤</th>
+                          <th style={{padding:"5px 10px",fontSize:9,fontWeight:800,color:"var(--mut)"}}>実労働</th>
+                          <th style={{padding:"5px 10px",fontSize:9,fontWeight:800,color:"var(--mut)"}}>残業</th>
+                          <th style={{padding:"5px 10px",fontSize:9,fontWeight:800,color:"var(--mut)"}}>備考</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ks.records.map((r,j)=>{
+                          const inMin=r.in?r.in.split(":").reduce((a,v,i)=>a+(i===0?Number(v)*60:Number(v)),0):0;
+                          const isLate=r.in&&inMin>8*60+55;
+                          const outMin=r.out?r.out.split(":").reduce((a,v,i)=>a+(i===0?Number(v)*60:Number(v)),0):0;
+                          const isEarly=r.out&&outMin<18*60;
+                          return (
+                            <tr key={j} style={{borderBottom:"1px solid #f1f5f9"}}>
+                              <td style={{padding:"5px 10px",fontWeight:600}}>{r.date}</td>
+                              <td style={{padding:"5px 10px",textAlign:"center",color:isLate?"#dc2626":"var(--txt)",fontWeight:isLate?700:400,fontFamily:"JetBrains Mono,monospace"}}>{r.in||"—"}</td>
+                              <td style={{padding:"5px 10px",textAlign:"center",color:isEarly?"#d97706":"var(--txt)",fontFamily:"JetBrains Mono,monospace"}}>{r.out||"—"}</td>
+                              <td style={{padding:"5px 10px",textAlign:"center",fontFamily:"JetBrains Mono,monospace"}}>{r.work||"—"}</td>
+                              <td style={{padding:"5px 10px",textAlign:"center",color:"#7c3aed",fontFamily:"JetBrains Mono,monospace"}}>{r.overtime||"—"}</td>
+                              <td style={{padding:"5px 10px"}}>
+                                {r.leave&&<span className="diff-badge" style={{background:"#fef3c7",color:"#b45309"}}>{r.leave}</span>}
+                                {isLate&&<span className="diff-badge" style={{background:"#fee2e2",color:"#dc2626"}}>遅刻</span>}
+                                {isEarly&&!r.leave&&<span className="diff-badge" style={{background:"#fffbeb",color:"#d97706"}}>早退</span>}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </details>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+
   const aTabs=[
     {id:"shift",label:"シフト表"},
     {id:"kyosei",label:"矯正当番"},
     {id:"flex",label:"変形労働時間"},
     {id:"paid",label:"有給管理"},
+    {id:"kot",label:"KOT打刻連携"},
     {id:"wish",label:"希望確認"},
     {id:"staff",label:"スタッフ管理"},
   ];
@@ -1488,6 +1845,7 @@ export default function App() {
           {tab==="kyosei" && isA && KyoseiTab()}
           {tab==="flex"   && isA && FlexTab()}
           {tab==="paid"   && PaidTab()}
+          {tab==="kot"    && isA && KotTab()}
           {tab==="wish"   && WishTab()}
           {tab==="staff"  && isA && StaffTab()}
         </main>
