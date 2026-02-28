@@ -80,16 +80,16 @@ function kyoseiInfo(y,m,d) {
 // INITIAL DATA
 // ═══════════════════════════════════════════════════════
 const INIT_STAFF = [
-  { id:1,  name:"佐藤 一郎",   role:"Dr",  leave:15, used:2,  active:true, kyoseiOrder:null, birthDate:"1975-04-10", joinYear:2010, employment:"正社員", weeklyDaysOff:2 },
-  { id:2,  name:"吉田 剛",     role:"Dr",  leave:15, used:0,  active:true, kyoseiOrder:null, birthDate:"1980-08-22", joinYear:2015, employment:"正社員", weeklyDaysOff:2 },
-  { id:3,  name:"山田 花子",   role:"Dh",  leave:10, used:1,  active:true, kyoseiOrder:1,    birthDate:"1990-02-14", joinYear:2018, employment:"正社員", weeklyDaysOff:2 },
-  { id:4,  name:"田中 美咲",   role:"Dh",  leave:10, used:2,  active:true, kyoseiOrder:2,    birthDate:"1992-11-03", joinYear:2019, employment:"パート",  weeklyDaysOff:null },
-  { id:5,  name:"鈴木 奈々",   role:"Dh",  leave:10, used:0,  active:true, kyoseiOrder:3,    birthDate:"1995-06-30", joinYear:2021, employment:"正社員", weeklyDaysOff:2.5 },
-  { id:6,  name:"渡辺 さくら", role:"Dh",  leave:10, used:3,  active:true, kyoseiOrder:4,    birthDate:"1988-01-17", joinYear:2016, employment:"パート",  weeklyDaysOff:null },
-  { id:7,  name:"伊藤 健二",   role:"Da",  leave:10, used:1,  active:true, kyoseiOrder:5,    birthDate:"1997-09-05", joinYear:2022, employment:"正社員", weeklyDaysOff:2 },
-  { id:8,  name:"中村 洋介",   role:"Da",  leave:8,  used:0,  active:true, kyoseiOrder:6,    birthDate:"1999-03-28", joinYear:2023, employment:"パート",  weeklyDaysOff:null },
-  { id:9,  name:"小林 麻子",   role:"受付", leave:10, used:1,  active:true, kyoseiOrder:7,    birthDate:"1993-07-12", joinYear:2020, employment:"正社員", weeklyDaysOff:3 },
-  { id:10, name:"加藤 真弓",   role:"受付", leave:10, used:0,  active:true, kyoseiOrder:8,    birthDate:"1996-12-01", joinYear:2022, employment:"パート",  weeklyDaysOff:null },
+  { id:1,  name:"佐藤 一郎",   role:"Dr",  leave:15, used:2,  active:true, kyoseiOrder:null, birthDate:"1975-04-10", joinYear:2010, employment:"正社員", weeklyDaysOff:2,   restDays:[] },
+  { id:2,  name:"吉田 剛",     role:"Dr",  leave:15, used:0,  active:true, kyoseiOrder:null, birthDate:"1980-08-22", joinYear:2015, employment:"正社員", weeklyDaysOff:2,   restDays:[] },
+  { id:3,  name:"山田 花子",   role:"Dh",  leave:10, used:1,  active:true, kyoseiOrder:1,    birthDate:"1990-02-14", joinYear:2018, employment:"正社員", weeklyDaysOff:2,   restDays:[] },
+  { id:4,  name:"田中 美咲",   role:"Dh",  leave:10, used:2,  active:true, kyoseiOrder:2,    birthDate:"1992-11-03", joinYear:2019, employment:"パート",  weeklyDaysOff:null, restDays:[3] },
+  { id:5,  name:"鈴木 奈々",   role:"Dh",  leave:10, used:0,  active:true, kyoseiOrder:3,    birthDate:"1995-06-30", joinYear:2021, employment:"正社員", weeklyDaysOff:2.5, restDays:[] },
+  { id:6,  name:"渡辺 さくら", role:"Dh",  leave:10, used:3,  active:true, kyoseiOrder:4,    birthDate:"1988-01-17", joinYear:2016, employment:"パート",  weeklyDaysOff:null, restDays:[1,5] },
+  { id:7,  name:"伊藤 健二",   role:"Da",  leave:10, used:1,  active:true, kyoseiOrder:5,    birthDate:"1997-09-05", joinYear:2022, employment:"正社員", weeklyDaysOff:2,   restDays:[] },
+  { id:8,  name:"中村 洋介",   role:"Da",  leave:8,  used:0,  active:true, kyoseiOrder:6,    birthDate:"1999-03-28", joinYear:2023, employment:"パート",  weeklyDaysOff:null, restDays:[2,4] },
+  { id:9,  name:"小林 麻子",   role:"受付", leave:10, used:1,  active:true, kyoseiOrder:7,    birthDate:"1993-07-12", joinYear:2020, employment:"正社員", weeklyDaysOff:3,   restDays:[] },
+  { id:10, name:"加藤 真弓",   role:"受付", leave:10, used:0,  active:true, kyoseiOrder:8,    birthDate:"1996-12-01", joinYear:2022, employment:"パート",  weeklyDaysOff:null, restDays:[1] },
 ];
 
 const DEFAULT_MIN = { Dr:1, Dh:2, Da:1, 受付:1 };
@@ -169,6 +169,13 @@ function autoSchedule(y,m,staff,minStaff) {
       sorted.forEach(s=>{
         const wc=weekWork[s.id][wk]||0;
         const needRest=wc>=maxDays;
+        // 定休曜日チェック
+        const isRestDay=(s.restDays||[]).includes(dow);
+
+        if(isRestDay){
+          shifts[`${s.id}_${d}`]="休み";
+          return;
+        }
 
         if(needRest&&assigned>=req){
           shifts[`${s.id}_${d}`]="休み";
@@ -648,7 +655,7 @@ export default function App() {
   const [modal,   setModal]   = useState(null);
   const [wModal,  setWModal]  = useState(null);
   const [addSt,   setAddSt]   = useState(false);
-  const [newSt,   setNewSt]   = useState({name:"",role:"Dh",leave:10,birthDate:"",joinYear:new Date().getFullYear(),employment:"正社員",weeklyDaysOff:2});
+  const [newSt,   setNewSt]   = useState({name:"",role:"Dh",leave:10,birthDate:"",joinYear:new Date().getFullYear(),employment:"正社員",weeklyDaysOff:2,restDays:[]});
   const [kotData, setKotData] = useState(null); // KING OF TIME 打刻データ
   const [kotDrag, setKotDrag] = useState(false);
 
@@ -1392,6 +1399,23 @@ export default function App() {
             <div className="aff" style={{maxWidth:90}}><label>有給付与日数</label>
               <input type="number" value={newSt.leave} onChange={e=>setNewSt(n=>({...n,leave:Number(e.target.value)}))} min="0" max="40"/>
             </div>
+            <div className="aff" style={{minWidth:200}}><label>定休曜日（複数選択可）</label>
+              <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:4}}>
+                {["月","火","水","木","金","土"].map((d,i)=>{
+                  const dow=i+1;
+                  const on=(newSt.restDays||[]).includes(dow);
+                  return (
+                    <button key={dow} type="button"
+                      style={{padding:"4px 9px",borderRadius:6,border:`1.5px solid ${on?"#0f4c8a":"#e2e8f0"}`,
+                        background:on?"#0f4c8a":"#fff",color:on?"#fff":"#64748b",
+                        fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}
+                      onClick={()=>setNewSt(n=>({...n,restDays:on?(n.restDays||[]).filter(x=>x!==dow):[...(n.restDays||[]),dow]}))}>
+                      {d}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <button className="svbtn" onClick={()=>{
               if(!newSt.name.trim()){toast_("氏名を入力してください");return;}
               const id=Math.max(0,...staff.map(s=>s.id))+1;
@@ -1403,8 +1427,9 @@ export default function App() {
                 birthDate:newSt.birthDate, joinYear:newSt.joinYear,
                 employment:newSt.employment,
                 weeklyDaysOff:newSt.employment==="正社員"?newSt.weeklyDaysOff:null,
+                restDays:newSt.restDays||[],
               }]);
-              setNewSt({name:"",role:"Dh",leave:10,birthDate:"",joinYear:new Date().getFullYear(),employment:"正社員",weeklyDaysOff:2});
+              setNewSt({name:"",role:"Dh",leave:10,birthDate:"",joinYear:new Date().getFullYear(),employment:"正社員",weeklyDaysOff:2,restDays:[]});
               setAddSt(false);
               toast_(`${newSt.name} を追加しました`);
             }}>追加</button>
@@ -1448,6 +1473,31 @@ export default function App() {
                         {tenure!=null&&<span style={{marginLeft:4,fontWeight:700,color:"var(--txt)"}}>（{tenure}年目）</span>}
                       </div>
                     )}
+                  </div>
+                  {/* 定休曜日 */}
+                  <div style={{marginTop:7}}>
+                    <div style={{fontSize:8,color:"var(--mut)",fontWeight:700,marginBottom:4,textTransform:"uppercase",letterSpacing:".3px"}}>定休曜日</div>
+                    <div style={{display:"flex",gap:3}}>
+                      {["月","火","水","木","金","土"].map((d,i)=>{
+                        const dow=i+1;
+                        const on=(s.restDays||[]).includes(dow);
+                        return (
+                          <button key={dow} type="button"
+                            style={{padding:"3px 7px",borderRadius:5,
+                              border:`1.5px solid ${on?"#0f4c8a":"#e2e8f0"}`,
+                              background:on?"#0f4c8a":"#f8fafc",
+                              color:on?"#fff":"#94a3b8",
+                              fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}
+                            onClick={()=>{
+                              const cur=s.restDays||[];
+                              const next=on?cur.filter(x=>x!==dow):[...cur,dow];
+                              setStaff(ps=>ps.map(st=>st.id===s.id?{...st,restDays:next}:st));
+                            }}>
+                            {d}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
                 <button className="sb" style={{background:s.active?"#dcfce7":"#f3f4f6",color:s.active?"#15803d":"#9ca3af",borderColor:"transparent",flexShrink:0}}
