@@ -650,6 +650,7 @@ export default function App() {
   const [addSt,   setAddSt]   = useState(false);
   const [newSt,   setNewSt]   = useState({name:"",role:"Dh",leave:10,birthDate:"",joinYear:new Date().getFullYear(),employment:"正社員",weeklyDaysOff:2});
   const [kotData, setKotData] = useState(null); // KING OF TIME 打刻データ
+  const [kotDrag, setKotDrag] = useState(false);
 
   const D=dim(year,month);
   const dH=useMemo(()=>dailyH(wh),[wh]);
@@ -1491,7 +1492,7 @@ export default function App() {
 
   // ── KOT TAB ────────────────────────────────
   const KotTab=()=>{
-    const [drag,setDrag]=useState(false);
+    const drag=kotDrag;
 
     // KING OF TIME CSVパーサー
     // KOTの月別勤怠CSVフォーマットに対応
@@ -1650,9 +1651,9 @@ export default function App() {
           <div className="kot-wrap">
             <div
               className={`drop-zone ${drag?"drag":""}`}
-              onDragOver={e=>{e.preventDefault();setDrag(true);}}
-              onDragLeave={()=>setDrag(false)}
-              onDrop={e=>{e.preventDefault();setDrag(false);handleFile(e.dataTransfer.files[0]);}}
+              onDragOver={e=>{e.preventDefault();setKotDrag(true);}}
+              onDragLeave={()=>setKotDrag(false)}
+              onDrop={e=>{e.preventDefault();setKotDrag(false);handleFile(e.dataTransfer.files[0]);}}
               onClick={()=>document.getElementById("kot-file-input").click()}
             >
               <div className="dico">📂</div>
