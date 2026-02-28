@@ -1082,7 +1082,6 @@ export default function App() {
                                 title={`${s.name} ${month+1}/${d} ${sh}${inSeminar?" 🎓セミナー参加":""}${ws?` (希望:${ws})`:""}`}>
                                 {shiftLabel(sh)}{inSeminar&&<span className="sem-dot"/>}
                               </button>
-                              </button>
                             ):(
                               <div className="scl-e"
                                 onClick={()=>isA&&setModal({staffId:s.id,day:d,staffName:s.name})}
