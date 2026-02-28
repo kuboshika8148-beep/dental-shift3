@@ -4,14 +4,16 @@ import { useState, useMemo, useEffect } from "react";
 // CONSTANTS
 // ═══════════════════════════════════════════════════════
 const ROLES = {
-  Dr:  { label:"歯科医師",   short:"Dr",  color:"#b91c1c", bg:"#fee2e2" },
-  Dh:  { label:"歯科衛生士", short:"Dh",  color:"#1d4ed8", bg:"#dbeafe" },
-  Da:  { label:"歯科助手",   short:"Da",  color:"#15803d", bg:"#dcfce7" },
-  受付: { label:"受付",       short:"受付", color:"#7c3aed", bg:"#ede9fe" },
+  Dr:   { label:"歯科医師",   short:"Dr",  color:"#b91c1c", bg:"#fee2e2" },
+  Dh:   { label:"歯科衛生士", short:"Dh",  color:"#1d4ed8", bg:"#dbeafe" },
+  Da:   { label:"歯科助手",   short:"Da",  color:"#15803d", bg:"#dcfce7" },
+  受付:  { label:"受付",       short:"受付", color:"#7c3aed", bg:"#ede9fe" },
+  技工士: { label:"技工士",    short:"技工", color:"#b45309", bg:"#fef3c7" },
+  TC:   { label:"TC",        short:"TC",  color:"#0e7490", bg:"#cffafe" },
 };
 
 // 矯正当番対象役職
-const KYOSEI_ROLES = new Set(["Dh","Da","受付"]);
+const KYOSEI_ROLES = new Set(["Dh","Da","受付","TC"]);
 
 // シフト種別 ── 就業規則（第34条）に基づく正確な時間
 // 平日:    8:55〜19:00 休憩12:30〜14:00(90分) = 8h05m
@@ -1541,6 +1543,16 @@ export default function App() {
               </div>
               <div className="sact">
                 <button className="sb" onClick={()=>{const n=window.prompt("氏名を変更:",s.name);if(n?.trim()){setStaff(ps=>ps.map(st=>st.id===s.id?{...st,name:n.trim()}:st));toast_("氏名を変更しました");}}}>名前変更</button>
+                <button className="sb" onClick={()=>{
+                  const opts=Object.keys(ROLES).join(" / ");
+                  const n=window.prompt(`職種を変更（${opts}）\n現在：${s.role}`,s.role);
+                  if(n&&ROLES[n]){
+                    const isKyosei=KYOSEI_ROLES.has(n);
+                    const maxOrd=isKyosei?Math.max(0,...staff.filter(x=>x.kyoseiOrder!=null).map(x=>x.kyoseiOrder)):null;
+                    setStaff(ps=>ps.map(st=>st.id===s.id?{...st,role:n,kyoseiOrder:isKyosei&&st.kyoseiOrder==null?maxOrd+1:KYOSEI_ROLES.has(n)?st.kyoseiOrder:null}:st));
+                    toast_(`${s.name} の職種を「${ROLES[n].label}」に変更しました`);
+                  } else if(n) toast_(`「${n}」は無効な職種です。${opts} のいずれかで入力してください`);
+                }}>職種変更</button>
                 <button className="sb" onClick={()=>{const n=Number(window.prompt("有給付与日数:",s.leave));if(!isNaN(n)&&n>=0){setStaff(ps=>ps.map(st=>st.id===s.id?{...st,leave:n}:st));toast_("有給日数を更新しました");}}}>有給変更</button>
                 <button className="sb" onClick={()=>{
                   const emp=window.confirm(`${s.name} の雇用形態を「${s.employment==="正社員"?"パート":"正社員"}」に変更しますか？`);
