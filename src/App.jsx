@@ -22,15 +22,15 @@ const KYOSEI_ROLES = new Set(["Dh","Da","受付","TC"]);
 // 矯正(土): 8:55〜12:30+14:00〜17:30 = 7h05m
 // 矯正(木): 8:55〜12:30+14:00〜18:30 = 8h05m
 const SHIFT_TYPES = {
-  出勤:        { label:"出勤",         color:"#1d4ed8", bg:"#dbeafe",  hours:8.08 }, // 8:55-19:00 休90分
-  土曜出勤:    { label:"土曜出勤",     color:"#0369a1", bg:"#e0f2fe",  hours:5.58 }, // 8:55-15:00 休30分
-  第2土曜出勤: { label:"第2土曜",      color:"#6d28d9", bg:"#ede9fe",  hours:6.58 }, // 8:55-17:00 休90分
-  矯正当番_土:  { label:"矯正当番(土)", color:"#0f766e", bg:"#ccfbf1",  hours:7.08 }, // 8:55-12:30+14:00-17:30
-  矯正当番_木:  { label:"矯正当番(木)", color:"#065f46", bg:"#a7f3d0",  hours:8.08 }, // 8:55-12:30+14:00-18:30
+  出勤:        { label:"出勤",         color:"#1d4ed8", bg:"#dbeafe",  hours:8.25 }, // 8:45-18:30 休90分
+  土曜出勤:    { label:"土曜出勤",     color:"#0369a1", bg:"#e0f2fe",  hours:6.25 }, // 8:45-15:30 休30分
+  第2土曜出勤: { label:"第2土曜",      color:"#6d28d9", bg:"#ede9fe",  hours:6.25 }, // 8:45-15:30 休30分
+  矯正当番_土:  { label:"矯正当番(土)", color:"#0f766e", bg:"#ccfbf1",  hours:5.5  }, // 8:45-12:30+14:00-17:30
+  矯正当番_木:  { label:"矯正当番(木)", color:"#065f46", bg:"#a7f3d0",  hours:6.5  }, // 8:45-12:30+14:00-18:30
   休み:       { label:"休み",         color:"#9ca3af", bg:"#f3f4f6",  hours:0    },
   有給:       { label:"有給",         color:"#d97706", bg:"#fef3c7",  hours:0    },
-  午前半休:    { label:"午前半休",     color:"#c2410c", bg:"#ffedd5",  hours:4.04 },
-  午後半休:    { label:"午後半休",     color:"#a16207", bg:"#fef9c3",  hours:4.04 },
+  午前半休:    { label:"午前半休",     color:"#c2410c", bg:"#ffedd5",  hours:4.125 },
+  午後半休:    { label:"午後半休",     color:"#a16207", bg:"#fef9c3",  hours:4.125 },
 };
 
 const DAYS_JP = ["日","月","火","水","木","金","土"];
@@ -111,8 +111,8 @@ const INIT_STAFF = [
 ];
 
 const DEFAULT_MIN = { Dr:1, Dh:2, Da:1, 受付:1 };
-const DEFAULT_WH  = { start:"08:55", end:"19:00", breakMin:90 }; // 就業規則第34条
-const DEFAULT_WH_SAT = { start:"08:55", end:"15:00", breakMin:30 }; // 就業規則第34条 土曜
+const DEFAULT_WH     = { start:"08:45", end:"18:30", breakMin:90 };
+const DEFAULT_WH_SAT = { start:"08:45", end:"15:30", breakMin:30 };
 
 // 月間所定労働時間 (週40h変形)
 function monthlyStd(y,m) {
@@ -666,7 +666,38 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--txt)
   padding:12px 14px;box-shadow:var(--sh);}
 .sum-card .sv{font-size:22px;font-weight:900;font-family:'JetBrains Mono',monospace;line-height:1.1;}
 .sum-card .sl{font-size:9px;color:var(--mut);font-weight:600;margin-top:2px;}
+/* セミナー */
+.sem-banner{background:linear-gradient(90deg,#fdf4ff,#fae8ff);border:1.5px solid #d8b4fe;
+  border-radius:9px;padding:8px 12px;margin-bottom:8px;}
+.sem-banner .sh{display:flex;align-items:center;gap:7px;}
+.sem-banner .sn{font-weight:800;font-size:12px;color:#7e22ce;}
+.sem-banner .st{font-size:10px;color:#9333ea;}
+.sem-banner .sp{display:flex;gap:4px;flex-wrap:wrap;margin-top:3px;}
+.sem-badge{background:#ede9fe;color:#6d28d9;font-size:9px;font-weight:700;
+  padding:1px 6px;border-radius:10px;display:inline-block;}
+.sem-dot{width:6px;height:6px;border-radius:50%;background:#a855f7;display:inline-block;vertical-align:middle;margin-left:2px;}
+.sem-modal-ov{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;
+  align-items:center;justify-content:center;z-index:300;}
+.sem-modal{background:#fff;border-radius:14px;padding:22px 24px;max-width:500px;
+  width:92vw;box-shadow:0 20px 60px rgba(0,0,0,.2);max-height:90vh;overflow-y:auto;}
+.sem-modal h3{font-size:14px;font-weight:800;margin-bottom:14px;color:#7e22ce;}
+.sem-form{display:flex;flex-direction:column;gap:11px;}
+.sem-form label{font-size:10px;font-weight:700;color:var(--mut);display:block;margin-bottom:3px;}
+.sem-form input{width:100%;padding:7px 10px;border:1.5px solid #e2e8f0;
+  border-radius:7px;font-size:12px;font-family:inherit;box-sizing:border-box;}
+.sem-row{display:flex;gap:8px;}
+.sem-row>div{flex:1;}
+.sem-staff-grid{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px;}
+.sem-staff-btn{padding:4px 10px;border-radius:6px;border:1.5px solid #e2e8f0;
+  background:#f8fafc;color:#374151;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .1s;}
+.sem-staff-btn.on{background:#7e22ce;border-color:#7e22ce;color:#fff;}
+.sem-item{background:#fdf4ff;border:1.5px solid #e9d5ff;border-radius:9px;
+  padding:10px 12px;display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+.sem-item .sb{flex:1;}
+.sem-item .sn{font-weight:800;font-size:12px;color:#7e22ce;}
+.sem-item .st{font-size:10px;color:#9333ea;margin-top:1px;}
 `;
+
 
 // ═══════════════════════════════════════════════════════
 // SHIFT LABEL HELPER
@@ -706,6 +737,8 @@ export default function App() {
   const [kotDrag, setKotDrag] = useState(false);
   const [rdPop,   setRdPop]   = useState(null);
   const [kyoseiAddId, setKyoseiAddId] = useState("");
+  const [seminars, setSeminars] = useState([]); // [{id, name, date, start, end, staffIds:[]}]
+  const [semModal, setSemModal] = useState(null); // null | "add" | seminar.id
 
   // ポップアップ外クリックで閉じる
   useEffect(()=>{
@@ -753,20 +786,27 @@ export default function App() {
     toast_("✨ シフトを自動作成しました");
   }
 
-  // 日別・役職別 出勤数
+  // 日別・役職別 出勤数（セミナー参加者を除外）
   const dayCounts=useMemo(()=>{
     const map={};
     for(let d=1;d<=D;d++){
+      // この日のセミナー参加者IDセット
+      const semStaff=new Set(
+        seminars.filter(sm=>{
+          const sd=new Date(sm.date);
+          return sd.getFullYear()===year&&sd.getMonth()===month&&sd.getDate()===d;
+        }).flatMap(sm=>sm.staffIds)
+      );
       map[d]={};
       Object.keys(ROLES).forEach(role=>{
-        map[d][role]=staff.filter(s=>s.role===role&&s.active).filter(s=>{
+        map[d][role]=staff.filter(s=>s.role===role&&s.active&&!semStaff.has(s.id)).filter(s=>{
           const sh=shifts[`${s.id}_${d}`];
           return sh&&sh!=="休み"&&sh!=="有給";
         }).length;
       });
     }
     return map;
-  },[shifts,staff,D]);
+  },[shifts,staff,D,seminars,year,month]);
 
   // スタッフ別 月間労働時間
   const staffH=useMemo(()=>{
@@ -823,9 +863,39 @@ export default function App() {
               <span className="mlbl">{year}/{String(month+1).padStart(2,"0")}</span>
               <button onClick={()=>{if(month===11){setMonth(0);setYear(y=>y+1);}else setMonth(m=>m+1);}}>›</button>
             </div>
+            {isA&&<button className="pbtn" style={{background:"#7e22ce",color:"#fff"}} onClick={()=>setSemModal("add")}>🎓 セミナー追加</button>}
             {isA&&<button className="pbtn" onClick={()=>window.print()}>🖨 印刷</button>}
           </div>
         </div>
+
+        {/* セミナーバナー（今月分） */}
+        {seminars.filter(sm=>{
+          const sd=new Date(sm.date);
+          return sd.getFullYear()===year&&sd.getMonth()===month;
+        }).sort((a,b)=>new Date(a.date)-new Date(b.date)).map(sm=>{
+          const d=new Date(sm.date).getDate();
+          const dow=DAYS_JP[new Date(sm.date).getDay()];
+          const participants=staff.filter(s=>sm.staffIds.includes(s.id));
+          return (
+            <div key={sm.id} className="sem-banner">
+              <div className="sem-banner sh">
+                <span style={{fontSize:16}}>🎓</span>
+                <span className="sem-banner sn">{sm.name}</span>
+                <span className="sem-banner st">{month+1}/{d}（{dow}）{sm.start}〜{sm.end}</span>
+                {isA&&<button style={{marginLeft:"auto",fontSize:9,padding:"2px 8px",borderRadius:5,border:"1px solid #d8b4fe",background:"#fff",color:"#7e22ce",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}
+                  onClick={()=>setSemModal(sm.id)}>編集</button>}
+                {isA&&<button style={{fontSize:9,padding:"2px 8px",borderRadius:5,border:"1px solid #fca5a5",background:"#fff",color:"#dc2626",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}
+                  onClick={()=>{if(window.confirm(`「${sm.name}」を削除しますか？`)){setSeminars(ps=>ps.filter(x=>x.id!==sm.id));}}}>削除</button>}
+              </div>
+              <div className="sem-banner sp">
+                <span style={{fontSize:9,color:"#9333ea",fontWeight:700,marginRight:2}}>参加：</span>
+                {participants.map(s=>(
+                  <span key={s.id} className="sem-badge">{s.name}<span className="sem-dot"/></span>
+                ))}
+              </div>
+            </div>
+          );
+        })}
 
         {/* 矯正日インフォ */}
         {Object.keys(kyoseiDays).length>0&&(
@@ -995,18 +1065,23 @@ export default function App() {
                         const sh=shifts[`${s.id}_${d}`];
                         const ws=wishes[`${s.id}_${d}`];
                         const st=SHIFT_TYPES[sh];
+                        const inSeminar=seminars.some(sm=>{
+                          const sd=new Date(sm.date);
+                          return sd.getFullYear()===year&&sd.getMonth()===month&&sd.getDate()===d&&sm.staffIds.includes(s.id);
+                        });
                         let tdCls="";
                         if(hol||dow===0) tdCls="td-hol";
                         else if(ki) tdCls="td-k";
                         else if(dow===6) tdCls="td-sat";
                         return (
-                          <td key={d} className={tdCls}>
+                          <td key={d} className={tdCls} style={inSeminar?{outline:"2px solid #d8b4fe",outlineOffset:"-2px",background:"#fdf4ff"}:{}}>
                             {sh?(
                               <button className="scl"
                                 style={{background:st?.bg||"#f3f4f6",color:st?.color||"#9ca3af"}}
                                 onClick={()=>isA&&setModal({staffId:s.id,day:d,staffName:s.name})}
-                                title={`${s.name} ${month+1}/${d} ${sh}${ws?` (希望:${ws})`:""}`}>
-                                {shiftLabel(sh)}
+                                title={`${s.name} ${month+1}/${d} ${sh}${inSeminar?" 🎓セミナー参加":""}${ws?` (希望:${ws})`:""}`}>
+                                {shiftLabel(sh)}{inSeminar&&<span className="sem-dot"/>}
+                              </button>
                               </button>
                             ):(
                               <div className="scl-e"
@@ -2070,6 +2145,87 @@ export default function App() {
           ))}
         </nav>
       </div>
+
+      {/* セミナーモーダル */}
+      {semModal&&isA&&(()=>{
+        const isEdit=semModal!=="add";
+        const existing=isEdit?seminars.find(s=>s.id===semModal):null;
+        const initDate=existing?.date||(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;})();
+        let formData={
+          name: existing?.name||"",
+          date: existing?.date||initDate,
+          start: existing?.start||"09:00",
+          end: existing?.end||"18:30",
+          staffIds: existing?.staffIds||[],
+        };
+        const save=()=>{
+          const fd=document.getElementById("sem-form");
+          const name=fd.querySelector("#sem-name").value.trim();
+          const date=fd.querySelector("#sem-date").value;
+          const start=fd.querySelector("#sem-start").value;
+          const end=fd.querySelector("#sem-end").value;
+          const staffIds=[...fd.querySelectorAll(".sem-staff-btn.on")].map(b=>Number(b.dataset.id));
+          if(!name){toast_("セミナー名を入力してください");return;}
+          if(!date){toast_("日付を入力してください");return;}
+          if(staffIds.length===0){toast_("参加スタッフを選択してください");return;}
+          if(isEdit){
+            setSeminars(ps=>ps.map(s=>s.id===semModal?{...s,name,date,start,end,staffIds}:s));
+            toast_("セミナーを更新しました");
+          } else {
+            setSeminars(ps=>[...ps,{id:Date.now(),name,date,start,end,staffIds}]);
+            toast_("セミナーを追加しました");
+          }
+          setSemModal(null);
+        };
+        return (
+          <div className="sem-modal-ov" onClick={()=>setSemModal(null)}>
+            <div className="sem-modal" onClick={e=>e.stopPropagation()}>
+              <h3>🎓 {isEdit?"セミナー編集":"セミナー追加"}</h3>
+              <div className="sem-form" id="sem-form">
+                <div>
+                  <label>セミナー名</label>
+                  <input id="sem-name" defaultValue={existing?.name||""} placeholder="例：衛生士スキルアップ研修"/>
+                </div>
+                <div className="sem-row">
+                  <div>
+                    <label>日付</label>
+                    <input id="sem-date" type="date" defaultValue={existing?.date||initDate}/>
+                  </div>
+                  <div>
+                    <label>開始時間</label>
+                    <input id="sem-start" type="time" defaultValue={existing?.start||"09:00"}/>
+                  </div>
+                  <div>
+                    <label>終了時間</label>
+                    <input id="sem-end" type="time" defaultValue={existing?.end||"18:30"}/>
+                  </div>
+                </div>
+                <div>
+                  <label>参加スタッフ（複数選択可）</label>
+                  <div className="sem-staff-grid">
+                    {staff.filter(s=>s.active).map(s=>{
+                      const on=(existing?.staffIds||[]).includes(s.id);
+                      const rv=ROLES[s.role];
+                      return (
+                        <button key={s.id} type="button" data-id={s.id}
+                          className={`sem-staff-btn ${on?"on":""}`}
+                          onClick={e=>{e.currentTarget.classList.toggle("on");}}>
+                          <span style={{fontSize:8,marginRight:3,background:rv.bg,color:rv.color,padding:"0 3px",borderRadius:3,fontWeight:800}}>{s.role}</span>
+                          {s.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:4}}>
+                  <button className="mcan" onClick={()=>setSemModal(null)}>キャンセル</button>
+                  <button className="svbtn" onClick={save}>{isEdit?"更新":"追加"}</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </>
   );
 }
