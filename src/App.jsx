@@ -13,17 +13,22 @@ const ROLES = {
 // 矯正当番対象役職
 const KYOSEI_ROLES = new Set(["Dh","Da","受付"]);
 
-// シフト種別
-// hours = 所定労働時間(h)
+// シフト種別 ── 就業規則（第34条）に基づく正確な時間
+// 平日:    8:55〜19:00 休憩12:30〜14:00(90分) = 8h05m
+// 通常土曜: 8:55〜15:00 休憩30分 = 5h35m
+// 第2土曜: 8:55〜17:00 休憩12:30〜14:00(90分) = 6h35m
+// 矯正(土): 8:55〜12:30+14:00〜17:30 = 7h05m
+// 矯正(木): 8:55〜12:30+14:00〜18:30 = 8h05m
 const SHIFT_TYPES = {
-  出勤:       { label:"出勤",         color:"#1d4ed8", bg:"#dbeafe",  hours:8.25 }, // 8:45-18:30 休90分
-  土曜出勤:    { label:"土曜出勤",     color:"#0369a1", bg:"#e0f2fe",  hours:6.25 }, // 8:45-15:30 休30分
-  矯正当番_土:  { label:"矯正当番(土)", color:"#0f766e", bg:"#ccfbf1",  hours:5.5  }, // 8:45-12:30 + 14:00-17:30
-  矯正当番_木:  { label:"矯正当番(木)", color:"#065f46", bg:"#a7f3d0",  hours:6.5  }, // 8:45-12:30 + 14:00-18:30
+  出勤:        { label:"出勤",         color:"#1d4ed8", bg:"#dbeafe",  hours:8.08 }, // 8:55-19:00 休90分
+  土曜出勤:    { label:"土曜出勤",     color:"#0369a1", bg:"#e0f2fe",  hours:5.58 }, // 8:55-15:00 休30分
+  第2土曜出勤: { label:"第2土曜",      color:"#6d28d9", bg:"#ede9fe",  hours:6.58 }, // 8:55-17:00 休90分
+  矯正当番_土:  { label:"矯正当番(土)", color:"#0f766e", bg:"#ccfbf1",  hours:7.08 }, // 8:55-12:30+14:00-17:30
+  矯正当番_木:  { label:"矯正当番(木)", color:"#065f46", bg:"#a7f3d0",  hours:8.08 }, // 8:55-12:30+14:00-18:30
   休み:       { label:"休み",         color:"#9ca3af", bg:"#f3f4f6",  hours:0    },
   有給:       { label:"有給",         color:"#d97706", bg:"#fef3c7",  hours:0    },
-  午前半休:    { label:"午前半休",     color:"#c2410c", bg:"#ffedd5",  hours:4.125},
-  午後半休:    { label:"午後半休",     color:"#a16207", bg:"#fef9c3",  hours:4.125},
+  午前半休:    { label:"午前半休",     color:"#c2410c", bg:"#ffedd5",  hours:4.04 },
+  午後半休:    { label:"午後半休",     color:"#a16207", bg:"#fef9c3",  hours:4.04 },
 };
 
 const DAYS_JP = ["日","月","火","水","木","金","土"];
@@ -75,21 +80,21 @@ function kyoseiInfo(y,m,d) {
 // INITIAL DATA
 // ═══════════════════════════════════════════════════════
 const INIT_STAFF = [
-  { id:1,  name:"佐藤 一郎",   role:"Dr",  leave:15, used:2,  active:true, kyoseiOrder:null },
-  { id:2,  name:"吉田 剛",     role:"Dr",  leave:15, used:0,  active:true, kyoseiOrder:null },
-  { id:3,  name:"山田 花子",   role:"Dh",  leave:10, used:1,  active:true, kyoseiOrder:1 },
-  { id:4,  name:"田中 美咲",   role:"Dh",  leave:10, used:2,  active:true, kyoseiOrder:2 },
-  { id:5,  name:"鈴木 奈々",   role:"Dh",  leave:10, used:0,  active:true, kyoseiOrder:3 },
-  { id:6,  name:"渡辺 さくら", role:"Dh",  leave:10, used:3,  active:true, kyoseiOrder:4 },
-  { id:7,  name:"伊藤 健二",   role:"Da",  leave:10, used:1,  active:true, kyoseiOrder:5 },
-  { id:8,  name:"中村 洋介",   role:"Da",  leave:8,  used:0,  active:true, kyoseiOrder:6 },
-  { id:9,  name:"小林 麻子",   role:"受付", leave:10, used:1,  active:true, kyoseiOrder:7 },
-  { id:10, name:"加藤 真弓",   role:"受付", leave:10, used:0,  active:true, kyoseiOrder:8 },
+  { id:1,  name:"佐藤 一郎",   role:"Dr",  leave:15, used:2,  active:true, kyoseiOrder:null, birthDate:"1975-04-10", joinYear:2010, employment:"正社員", weeklyDaysOff:2 },
+  { id:2,  name:"吉田 剛",     role:"Dr",  leave:15, used:0,  active:true, kyoseiOrder:null, birthDate:"1980-08-22", joinYear:2015, employment:"正社員", weeklyDaysOff:2 },
+  { id:3,  name:"山田 花子",   role:"Dh",  leave:10, used:1,  active:true, kyoseiOrder:1,    birthDate:"1990-02-14", joinYear:2018, employment:"正社員", weeklyDaysOff:2 },
+  { id:4,  name:"田中 美咲",   role:"Dh",  leave:10, used:2,  active:true, kyoseiOrder:2,    birthDate:"1992-11-03", joinYear:2019, employment:"パート",  weeklyDaysOff:null },
+  { id:5,  name:"鈴木 奈々",   role:"Dh",  leave:10, used:0,  active:true, kyoseiOrder:3,    birthDate:"1995-06-30", joinYear:2021, employment:"正社員", weeklyDaysOff:2.5 },
+  { id:6,  name:"渡辺 さくら", role:"Dh",  leave:10, used:3,  active:true, kyoseiOrder:4,    birthDate:"1988-01-17", joinYear:2016, employment:"パート",  weeklyDaysOff:null },
+  { id:7,  name:"伊藤 健二",   role:"Da",  leave:10, used:1,  active:true, kyoseiOrder:5,    birthDate:"1997-09-05", joinYear:2022, employment:"正社員", weeklyDaysOff:2 },
+  { id:8,  name:"中村 洋介",   role:"Da",  leave:8,  used:0,  active:true, kyoseiOrder:6,    birthDate:"1999-03-28", joinYear:2023, employment:"パート",  weeklyDaysOff:null },
+  { id:9,  name:"小林 麻子",   role:"受付", leave:10, used:1,  active:true, kyoseiOrder:7,    birthDate:"1993-07-12", joinYear:2020, employment:"正社員", weeklyDaysOff:3 },
+  { id:10, name:"加藤 真弓",   role:"受付", leave:10, used:0,  active:true, kyoseiOrder:8,    birthDate:"1996-12-01", joinYear:2022, employment:"パート",  weeklyDaysOff:null },
 ];
 
 const DEFAULT_MIN = { Dr:1, Dh:2, Da:1, 受付:1 };
-const DEFAULT_WH  = { start:"08:45", end:"18:30", breakMin:90 };
-const DEFAULT_WH_SAT = { start:"08:45", end:"15:30", breakMin:30 }; // 土曜: 6.25h
+const DEFAULT_WH  = { start:"08:55", end:"19:00", breakMin:90 }; // 就業規則第34条
+const DEFAULT_WH_SAT = { start:"08:55", end:"15:00", breakMin:30 }; // 就業規則第34条 土曜
 
 // 月間所定労働時間 (週40h変形)
 function monthlyStd(y,m) {
@@ -608,7 +613,7 @@ export default function App() {
   const [modal,   setModal]   = useState(null);
   const [wModal,  setWModal]  = useState(null);
   const [addSt,   setAddSt]   = useState(false);
-  const [newSt,   setNewSt]   = useState({name:"",role:"Dh",leave:10});
+  const [newSt,   setNewSt]   = useState({name:"",role:"Dh",leave:10,birthDate:"",joinYear:new Date().getFullYear(),employment:"正社員",weeklyDaysOff:2});
 
   const D=dim(year,month);
   const dH=useMemo(()=>dailyH(wh),[wh]);
@@ -1314,20 +1319,51 @@ export default function App() {
         <div className="aform">
           <div style={{fontSize:12,fontWeight:800,marginBottom:10}}>新規スタッフ追加</div>
           <div className="afr">
-            <div className="aff"><label>氏名</label><input value={newSt.name} onChange={e=>setNewSt(n=>({...n,name:e.target.value}))} placeholder="例：田中 花子"/></div>
+            <div className="aff" style={{minWidth:120}}><label>氏名</label>
+              <input value={newSt.name} onChange={e=>setNewSt(n=>({...n,name:e.target.value}))} placeholder="例：田中 花子"/>
+            </div>
             <div className="aff" style={{maxWidth:100}}><label>役職</label>
               <select value={newSt.role} onChange={e=>setNewSt(n=>({...n,role:e.target.value}))}>
                 {Object.entries(ROLES).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
               </select>
             </div>
-            <div className="aff" style={{maxWidth:90}}><label>有給付与日数</label><input type="number" value={newSt.leave} onChange={e=>setNewSt(n=>({...n,leave:Number(e.target.value)}))} min="0" max="40"/></div>
+            <div className="aff" style={{maxWidth:130}}><label>生年月日</label>
+              <input type="date" value={newSt.birthDate} onChange={e=>setNewSt(n=>({...n,birthDate:e.target.value}))}/>
+            </div>
+            <div className="aff" style={{maxWidth:90}}><label>入社年度</label>
+              <input type="number" value={newSt.joinYear} onChange={e=>setNewSt(n=>({...n,joinYear:Number(e.target.value)}))} min="1990" max="2099"/>
+            </div>
+            <div className="aff" style={{maxWidth:100}}><label>雇用形態</label>
+              <select value={newSt.employment} onChange={e=>setNewSt(n=>({...n,employment:e.target.value,weeklyDaysOff:e.target.value==="正社員"?2:null}))}>
+                <option value="正社員">正社員</option>
+                <option value="パート">パート</option>
+              </select>
+            </div>
+            {newSt.employment==="正社員"&&(
+              <div className="aff" style={{maxWidth:100}}><label>週休日数</label>
+                <select value={newSt.weeklyDaysOff} onChange={e=>setNewSt(n=>({...n,weeklyDaysOff:Number(e.target.value)}))}>
+                  <option value={2}>週休2日</option>
+                  <option value={2.5}>週休2.5日</option>
+                  <option value={3}>週休3日</option>
+                </select>
+              </div>
+            )}
+            <div className="aff" style={{maxWidth:90}}><label>有給付与日数</label>
+              <input type="number" value={newSt.leave} onChange={e=>setNewSt(n=>({...n,leave:Number(e.target.value)}))} min="0" max="40"/>
+            </div>
             <button className="svbtn" onClick={()=>{
               if(!newSt.name.trim()){toast_("氏名を入力してください");return;}
               const id=Math.max(0,...staff.map(s=>s.id))+1;
               const isKyosei=KYOSEI_ROLES.has(newSt.role);
               const maxOrd=isKyosei?Math.max(0,...staff.filter(s=>s.kyoseiOrder!=null).map(s=>s.kyoseiOrder)):null;
-              setStaff(ps=>[...ps,{id,name:newSt.name,role:newSt.role,leave:newSt.leave,used:0,active:true,kyoseiOrder:isKyosei?maxOrd+1:null}]);
-              setNewSt({name:"",role:"Dh",leave:10});
+              setStaff(ps=>[...ps,{
+                id, name:newSt.name, role:newSt.role, leave:newSt.leave, used:0, active:true,
+                kyoseiOrder:isKyosei?maxOrd+1:null,
+                birthDate:newSt.birthDate, joinYear:newSt.joinYear,
+                employment:newSt.employment,
+                weeklyDaysOff:newSt.employment==="正社員"?newSt.weeklyDaysOff:null,
+              }]);
+              setNewSt({name:"",role:"Dh",leave:10,birthDate:"",joinYear:new Date().getFullYear(),employment:"正社員",weeklyDaysOff:2});
               setAddSt(false);
               toast_(`${newSt.name} を追加しました`);
             }}>追加</button>
@@ -1337,15 +1373,43 @@ export default function App() {
       <div className="sgrid">
         {Object.keys(ROLES).map(role=>{
           const rv=ROLES[role];
-          return staff.filter(s=>s.role===role).map(s=>(
+          return staff.filter(s=>s.role===role).map(s=>{
+            const age=s.birthDate?Math.floor((new Date()-new Date(s.birthDate))/(365.25*24*3600*1000)):null;
+            const tenure=s.joinYear?new Date().getFullYear()-s.joinYear:null;
+            return (
             <div className="scard" key={s.id} style={{opacity:s.active?1:.55}}>
               <div className="st">
                 <div>
                   <div className="snm">{s.name}</div>
-                  <span className="srl" style={{background:rv.bg,color:rv.color}}>{rv.short} {rv.label}</span>
-                  {s.kyoseiOrder!=null&&<span style={{fontSize:8,color:"#065f46",background:"#d1fae5",padding:"1px 5px",borderRadius:6,fontWeight:800,marginLeft:4}}>矯正ローテ {s.kyoseiOrder}番</span>}
+                  <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:3}}>
+                    <span className="srl" style={{background:rv.bg,color:rv.color}}>{rv.short} {rv.label}</span>
+                    <span className="srl" style={{background:s.employment==="正社員"?"#dbeafe":"#fef3c7",color:s.employment==="正社員"?"#1d4ed8":"#b45309"}}>
+                      {s.employment||"正社員"}
+                    </span>
+                    {s.employment==="正社員"&&s.weeklyDaysOff!=null&&(
+                      <span className="srl" style={{background:"#f0fdf4",color:"#15803d"}}>週休{s.weeklyDaysOff}日</span>
+                    )}
+                    {s.kyoseiOrder!=null&&(
+                      <span className="srl" style={{background:"#d1fae5",color:"#065f46"}}>矯正{s.kyoseiOrder}番</span>
+                    )}
+                  </div>
+                  {/* 生年月日・入社年度 */}
+                  <div style={{marginTop:6,display:"flex",gap:10,flexWrap:"wrap"}}>
+                    {s.birthDate&&(
+                      <div style={{fontSize:10,color:"var(--mut)"}}>
+                        🎂 {s.birthDate.replace(/-/g,"/")}
+                        {age!=null&&<span style={{marginLeft:4,fontWeight:700,color:"var(--txt)"}}>（{age}歳）</span>}
+                      </div>
+                    )}
+                    {s.joinYear&&(
+                      <div style={{fontSize:10,color:"var(--mut)"}}>
+                        📅 {s.joinYear}年入社
+                        {tenure!=null&&<span style={{marginLeft:4,fontWeight:700,color:"var(--txt)"}}>（{tenure}年目）</span>}
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <button className="sb" style={{background:s.active?"#dcfce7":"#f3f4f6",color:s.active?"#15803d":"#9ca3af",borderColor:"transparent"}}
+                <button className="sb" style={{background:s.active?"#dcfce7":"#f3f4f6",color:s.active?"#15803d":"#9ca3af",borderColor:"transparent",flexShrink:0}}
                   onClick={()=>{setStaff(ps=>ps.map(st=>st.id===s.id?{...st,active:!st.active}:st));toast_(s.active?`${s.name} を休職にしました`:`${s.name} を復帰させました`);}}>
                   {s.active?"在職":"休職"}
                 </button>
@@ -1359,10 +1423,27 @@ export default function App() {
               <div className="sact">
                 <button className="sb" onClick={()=>{const n=window.prompt("氏名を変更:",s.name);if(n?.trim()){setStaff(ps=>ps.map(st=>st.id===s.id?{...st,name:n.trim()}:st));toast_("氏名を変更しました");}}}>名前変更</button>
                 <button className="sb" onClick={()=>{const n=Number(window.prompt("有給付与日数:",s.leave));if(!isNaN(n)&&n>=0){setStaff(ps=>ps.map(st=>st.id===s.id?{...st,leave:n}:st));toast_("有給日数を更新しました");}}}>有給変更</button>
+                <button className="sb" onClick={()=>{
+                  const emp=window.confirm(`${s.name} の雇用形態を「${s.employment==="正社員"?"パート":"正社員"}」に変更しますか？`);
+                  if(emp){
+                    const next=s.employment==="正社員"?"パート":"正社員";
+                    setStaff(ps=>ps.map(st=>st.id===s.id?{...st,employment:next,weeklyDaysOff:next==="正社員"?2:null}:st));
+                    toast_("雇用形態を変更しました");
+                  }
+                }}>雇用変更</button>
+                {s.employment==="正社員"&&(
+                  <button className="sb" onClick={()=>{
+                    const opts=["2","2.5","3"];
+                    const cur=String(s.weeklyDaysOff||2);
+                    const n=window.prompt(`週休日数を入力（2 / 2.5 / 3）\n現在：${cur}日`,cur);
+                    if(n&&opts.includes(n)){setStaff(ps=>ps.map(st=>st.id===s.id?{...st,weeklyDaysOff:Number(n)}:st));toast_("週休日数を変更しました");}
+                    else if(n) toast_("2、2.5、3のいずれかで入力してください");
+                  }}>週休変更</button>
+                )}
                 <button className="sb del" onClick={()=>{if(window.confirm(`${s.name} を削除しますか？`)){setStaff(ps=>ps.filter(st=>st.id!==s.id));toast_(`${s.name} を削除しました`);}}}>削除</button>
               </div>
             </div>
-          ));
+          );});
         })}
       </div>
     </div>
