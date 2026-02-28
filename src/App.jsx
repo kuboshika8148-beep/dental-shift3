@@ -631,7 +631,6 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--txt)
 .rdpop-opt.sel-am{background:#0891b2;border-color:#0891b2;color:#fff;}
 .rdpop-opt.sel-pm{background:#7c3aed;border-color:#7c3aed;color:#fff;}
 .rdpop-opt.none{color:#94a3b8;}
-`;
 .kot-wrap{background:var(--surf);border-radius:var(--r);border:1px solid var(--bdr);
   padding:18px 20px;margin-bottom:14px;box-shadow:var(--sh);}
 .kot-step{display:flex;gap:10px;align-items:flex-start;margin-bottom:10px;}
