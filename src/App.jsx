@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 
 // ═══════════════════════════════════════════════════════
 // CONSTANTS
@@ -80,16 +80,32 @@ function kyoseiInfo(y,m,d) {
 // INITIAL DATA
 // ═══════════════════════════════════════════════════════
 const INIT_STAFF = [
-  { id:1,  name:"佐藤 一郎",   role:"Dr",  leave:15, used:2,  active:true, kyoseiOrder:null, birthDate:"1975-04-10", joinYear:2010, employment:"正社員", weeklyDaysOff:2,   restDays:[] },
-  { id:2,  name:"吉田 剛",     role:"Dr",  leave:15, used:0,  active:true, kyoseiOrder:null, birthDate:"1980-08-22", joinYear:2015, employment:"正社員", weeklyDaysOff:2,   restDays:[] },
-  { id:3,  name:"山田 花子",   role:"Dh",  leave:10, used:1,  active:true, kyoseiOrder:1,    birthDate:"1990-02-14", joinYear:2018, employment:"正社員", weeklyDaysOff:2,   restDays:[] },
-  { id:4,  name:"田中 美咲",   role:"Dh",  leave:10, used:2,  active:true, kyoseiOrder:2,    birthDate:"1992-11-03", joinYear:2019, employment:"パート",  weeklyDaysOff:null, restDays:[3] },
-  { id:5,  name:"鈴木 奈々",   role:"Dh",  leave:10, used:0,  active:true, kyoseiOrder:3,    birthDate:"1995-06-30", joinYear:2021, employment:"正社員", weeklyDaysOff:2.5, restDays:[] },
-  { id:6,  name:"渡辺 さくら", role:"Dh",  leave:10, used:3,  active:true, kyoseiOrder:4,    birthDate:"1988-01-17", joinYear:2016, employment:"パート",  weeklyDaysOff:null, restDays:[1,5] },
-  { id:7,  name:"伊藤 健二",   role:"Da",  leave:10, used:1,  active:true, kyoseiOrder:5,    birthDate:"1997-09-05", joinYear:2022, employment:"正社員", weeklyDaysOff:2,   restDays:[] },
-  { id:8,  name:"中村 洋介",   role:"Da",  leave:8,  used:0,  active:true, kyoseiOrder:6,    birthDate:"1999-03-28", joinYear:2023, employment:"パート",  weeklyDaysOff:null, restDays:[2,4] },
-  { id:9,  name:"小林 麻子",   role:"受付", leave:10, used:1,  active:true, kyoseiOrder:7,    birthDate:"1993-07-12", joinYear:2020, employment:"正社員", weeklyDaysOff:3,   restDays:[] },
-  { id:10, name:"加藤 真弓",   role:"受付", leave:10, used:0,  active:true, kyoseiOrder:8,    birthDate:"1996-12-01", joinYear:2022, employment:"パート",  weeklyDaysOff:null, restDays:[1] },
+  // ── Dh 正社員 ──
+  { id: 1, name:"西本 由美",   role:"Dh", leave:27, used:0, active:true, kyoseiOrder:1, birthDate:"", joinYear:2012, employment:"正社員", weeklyDaysOff:3, restDays:[] },
+  { id: 2, name:"福山 奈々",   role:"Dh", leave:47, used:0, active:true, kyoseiOrder:2, birthDate:"", joinYear:2018, employment:"正社員", weeklyDaysOff:3, restDays:[] },
+  { id: 3, name:"宮下 真菜",   role:"Dh", leave:26, used:0, active:true, kyoseiOrder:3, birthDate:"", joinYear:2023, employment:"正社員", weeklyDaysOff:2, restDays:[] },
+  { id: 4, name:"濱田 淑恵",   role:"Dh", leave:9,  used:0, active:true, kyoseiOrder:4, birthDate:"", joinYear:2023, employment:"正社員", weeklyDaysOff:2, restDays:[] },
+  { id: 5, name:"奥 祐佳里",   role:"Dh", leave:17, used:0, active:true, kyoseiOrder:5, birthDate:"", joinYear:2024, employment:"正社員", weeklyDaysOff:2, restDays:[] },
+  { id: 6, name:"西森 遥香",   role:"Dh", leave:24, used:0, active:true, kyoseiOrder:6, birthDate:"", joinYear:2024, employment:"正社員", weeklyDaysOff:2, restDays:[] },
+  { id: 7, name:"堀川 真菜",   role:"Dh", leave:0,  used:0, active:true, kyoseiOrder:7, birthDate:"", joinYear:2025, employment:"正社員", weeklyDaysOff:2, restDays:[] },
+  { id: 8, name:"橋村 優華",   role:"Dh", leave:2,  used:0, active:true, kyoseiOrder:8, birthDate:"", joinYear:2025, employment:"正社員", weeklyDaysOff:2, restDays:[] },
+  // ── Dh パート ──
+  { id: 9, name:"岩本 真理",   role:"Dh", leave:23, used:0, active:true, kyoseiOrder:null, birthDate:"", joinYear:2021, employment:"パート", weeklyDaysOff:null, restDays:[] },
+  { id:10, name:"楓 かおり",   role:"Dh", leave:28, used:0, active:true, kyoseiOrder:null, birthDate:"", joinYear:2023, employment:"パート", weeklyDaysOff:null, restDays:[] },
+  { id:11, name:"井上 彩花",   role:"Dh", leave:9,  used:0, active:true, kyoseiOrder:null, birthDate:"", joinYear:2025, employment:"パート", weeklyDaysOff:null, restDays:[] },
+  // ── Da ──
+  { id:12, name:"村山 由身子", role:"Da", leave:16, used:0, active:true, kyoseiOrder:null, birthDate:"", joinYear:2020, employment:"正社員", weeklyDaysOff:2, restDays:[] },
+  { id:13, name:"谷 めぐみ",   role:"Da", leave:24, used:0, active:true, kyoseiOrder:null, birthDate:"", joinYear:2024, employment:"正社員", weeklyDaysOff:2, restDays:[] },
+  { id:14, name:"佐々木 美佳", role:"Da", leave:13, used:0, active:true, kyoseiOrder:null, birthDate:"", joinYear:2023, employment:"正社員", weeklyDaysOff:2, restDays:[] },
+  { id:15, name:"平野 翔一",   role:"Da", leave:27, used:0, active:true, kyoseiOrder:null, birthDate:"", joinYear:2023, employment:"正社員", weeklyDaysOff:2, restDays:[] },
+  // ── 受付 ──
+  { id:16, name:"中田 麻悠",   role:"受付", leave:33, used:0, active:true, kyoseiOrder:null, birthDate:"", joinYear:2022, employment:"正社員", weeklyDaysOff:2, restDays:[] },
+  { id:17, name:"西田 まどか", role:"受付", leave:24, used:0, active:true, kyoseiOrder:null, birthDate:"", joinYear:2022, employment:"正社員", weeklyDaysOff:2, restDays:[] },
+  { id:18, name:"松本 梨帆",   role:"受付", leave:30, used:0, active:true, kyoseiOrder:null, birthDate:"", joinYear:2024, employment:"正社員", weeklyDaysOff:2, restDays:[] },
+  // ── Dr ──
+  { id:19, name:"岡崎 絵涼依", role:"Dr", leave:17, used:0, active:true, kyoseiOrder:null, birthDate:"", joinYear:2024, employment:"正社員", weeklyDaysOff:2, restDays:[] },
+  { id:20, name:"伊賀 利香",   role:"Dr", leave:13, used:0, active:true, kyoseiOrder:null, birthDate:"", joinYear:2024, employment:"正社員", weeklyDaysOff:2, restDays:[] },
+  { id:21, name:"嶋津 恵加",   role:"Dr", leave:1,  used:0, active:true, kyoseiOrder:null, birthDate:"", joinYear:2024, employment:"正社員", weeklyDaysOff:2, restDays:[] },
 ];
 
 const DEFAULT_MIN = { Dr:1, Dh:2, Da:1, 受付:1 };
@@ -170,7 +186,10 @@ function autoSchedule(y,m,staff,minStaff) {
         const wc=weekWork[s.id][wk]||0;
         const needRest=wc>=maxDays;
         // 定休曜日チェック
-        const isRestDay=(s.restDays||[]).includes(dow);
+        const restEntry=(s.restDays||[]).find(r=>r.dow===dow);
+        const isRestDay=restEntry?.type==="全日";
+        const isHalfAM=restEntry?.type==="午前";
+        const isHalfPM=restEntry?.type==="午後";
 
         if(isRestDay){
           shifts[`${s.id}_${d}`]="休み";
@@ -199,8 +218,14 @@ function autoSchedule(y,m,staff,minStaff) {
             shifts[`${s.id}_${d}`]="休み";
           }
         } else {
-          // 通常日（土曜は土曜出勤）
-          shifts[`${s.id}_${d}`]=dow===6?"土曜出勤":"出勤";
+          // 通常日（土曜は土曜出勤）、半休設定があれば反映
+          if(isHalfAM){
+            shifts[`${s.id}_${d}`]="午前半休";
+          } else if(isHalfPM){
+            shifts[`${s.id}_${d}`]="午後半休";
+          } else {
+            shifts[`${s.id}_${d}`]=dow===6?"土曜出勤":"出勤";
+          }
           workCount[s.id]=(workCount[s.id]||0)+1;
           weekWork[s.id][wk]=(weekWork[s.id][wk]||0)+1;
           assigned++;
@@ -586,7 +611,27 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--txt)
 .mob-nav button.on{color:#38bdf8;}
 .mob-nav button span{font-size:20px;line-height:1;}
 
-/* KOT連携 */
+/* 定休曜日ピッカー */
+.rdpick{position:relative;display:inline-block;}
+.rdpop{position:absolute;top:calc(100% + 4px);left:50%;transform:translateX(-50%);
+  background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;
+  box-shadow:0 8px 24px rgba(0,0,0,.13);z-index:200;padding:8px 10px;
+  min-width:130px;white-space:nowrap;}
+.rdpop::before{content:"";position:absolute;top:-7px;left:50%;transform:translateX(-50%);
+  border:6px solid transparent;border-top:none;border-bottom-color:#e2e8f0;}
+.rdpop::after{content:"";position:absolute;top:-5px;left:50%;transform:translateX(-50%);
+  border:5px solid transparent;border-top:none;border-bottom-color:#fff;}
+.rdpop-title{font-size:9px;font-weight:800;color:var(--mut);margin-bottom:6px;text-align:center;}
+.rdpop-opts{display:flex;flex-direction:column;gap:4px;}
+.rdpop-opt{padding:5px 10px;border-radius:6px;border:1.5px solid #e2e8f0;
+  background:#f8fafc;color:#374151;font-size:11px;font-weight:700;
+  cursor:pointer;text-align:center;font-family:inherit;transition:all .1s;}
+.rdpop-opt:hover{background:#f0f9ff;border-color:#38bdf8;}
+.rdpop-opt.sel{background:#0f4c8a;border-color:#0f4c8a;color:#fff;}
+.rdpop-opt.sel-am{background:#0891b2;border-color:#0891b2;color:#fff;}
+.rdpop-opt.sel-pm{background:#7c3aed;border-color:#7c3aed;color:#fff;}
+.rdpop-opt.none{color:#94a3b8;}
+`;
 .kot-wrap{background:var(--surf);border-radius:var(--r);border:1px solid var(--bdr);
   padding:18px 20px;margin-bottom:14px;box-shadow:var(--sh);}
 .kot-step{display:flex;gap:10px;align-items:flex-start;margin-bottom:10px;}
@@ -656,8 +701,18 @@ export default function App() {
   const [wModal,  setWModal]  = useState(null);
   const [addSt,   setAddSt]   = useState(false);
   const [newSt,   setNewSt]   = useState({name:"",role:"Dh",leave:10,birthDate:"",joinYear:new Date().getFullYear(),employment:"正社員",weeklyDaysOff:2,restDays:[]});
-  const [kotData, setKotData] = useState(null); // KING OF TIME 打刻データ
+  const [kotData, setKotData] = useState(null);
   const [kotDrag, setKotDrag] = useState(false);
+  const [rdPop,   setRdPop]   = useState(null);
+  const [kyoseiAddId, setKyoseiAddId] = useState("");
+
+  // ポップアップ外クリックで閉じる
+  useEffect(()=>{
+    if(!rdPop) return;
+    const close=()=>setRdPop(null);
+    document.addEventListener("click", close);
+    return ()=>document.removeEventListener("click", close);
+  },[rdPop]);
 
   const D=dim(year,month);
   const dH=useMemo(()=>dailyH(wh),[wh]);
@@ -1078,10 +1133,11 @@ export default function App() {
     const eligible=staff.filter(s=>s.active&&KYOSEI_ROLES.has(s.role));
     const withOrder=eligible.filter(s=>s.kyoseiOrder!=null).sort((a,b)=>a.kyoseiOrder-b.kyoseiOrder);
     const without=eligible.filter(s=>s.kyoseiOrder==null);
-    const [addId,setAddId]=useState("");
+    const addId=kyoseiAddId;
+    const setAddId=setKyoseiAddId;
 
-    // 矯正日スケジュール (全月)
-    const schedule=useMemo(()=>{
+    // 矯正日スケジュール
+    const schedule=(()=>{
       const res=[];
       let idx=0;
       for(let d=1;d<=D;d++){
@@ -1093,7 +1149,7 @@ export default function App() {
         }
       }
       return res;
-    },[withOrder]);
+    })();
 
     return (
       <div>
@@ -1399,22 +1455,12 @@ export default function App() {
             <div className="aff" style={{maxWidth:90}}><label>有給付与日数</label>
               <input type="number" value={newSt.leave} onChange={e=>setNewSt(n=>({...n,leave:Number(e.target.value)}))} min="0" max="40"/>
             </div>
-            <div className="aff" style={{minWidth:200}}><label>定休曜日（複数選択可）</label>
-              <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:4}}>
-                {["月","火","水","木","金","土"].map((d,i)=>{
-                  const dow=i+1;
-                  const on=(newSt.restDays||[]).includes(dow);
-                  return (
-                    <button key={dow} type="button"
-                      style={{padding:"4px 9px",borderRadius:6,border:`1.5px solid ${on?"#0f4c8a":"#e2e8f0"}`,
-                        background:on?"#0f4c8a":"#fff",color:on?"#fff":"#64748b",
-                        fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}
-                      onClick={()=>setNewSt(n=>({...n,restDays:on?(n.restDays||[]).filter(x=>x!==dow):[...(n.restDays||[]),dow]}))}>
-                      {d}
-                    </button>
-                  );
-                })}
-              </div>
+            <div className="aff" style={{minWidth:240}}>
+              {RestDayPicker({
+                restDays: newSt.restDays||[],
+                onChange: (rd)=>setNewSt(n=>({...n,restDays:rd})),
+                targetId: "new"
+              })}
             </div>
             <button className="svbtn" onClick={()=>{
               if(!newSt.name.trim()){toast_("氏名を入力してください");return;}
@@ -1475,29 +1521,12 @@ export default function App() {
                     )}
                   </div>
                   {/* 定休曜日 */}
-                  <div style={{marginTop:7}}>
-                    <div style={{fontSize:8,color:"var(--mut)",fontWeight:700,marginBottom:4,textTransform:"uppercase",letterSpacing:".3px"}}>定休曜日</div>
-                    <div style={{display:"flex",gap:3}}>
-                      {["月","火","水","木","金","土"].map((d,i)=>{
-                        const dow=i+1;
-                        const on=(s.restDays||[]).includes(dow);
-                        return (
-                          <button key={dow} type="button"
-                            style={{padding:"3px 7px",borderRadius:5,
-                              border:`1.5px solid ${on?"#0f4c8a":"#e2e8f0"}`,
-                              background:on?"#0f4c8a":"#f8fafc",
-                              color:on?"#fff":"#94a3b8",
-                              fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}
-                            onClick={()=>{
-                              const cur=s.restDays||[];
-                              const next=on?cur.filter(x=>x!==dow):[...cur,dow];
-                              setStaff(ps=>ps.map(st=>st.id===s.id?{...st,restDays:next}:st));
-                            }}>
-                            {d}
-                          </button>
-                        );
-                      })}
-                    </div>
+                  <div style={{marginTop:8}}>
+                    {RestDayPicker({
+                      restDays: s.restDays||[],
+                      onChange: (rd)=>setStaff(ps=>ps.map(st=>st.id===s.id?{...st,restDays:rd}:st)),
+                      targetId: s.id
+                    })}
                   </div>
                 </div>
                 <button className="sb" style={{background:s.active?"#dcfce7":"#f3f4f6",color:s.active?"#15803d":"#9ca3af",borderColor:"transparent",flexShrink:0}}
@@ -1539,6 +1568,78 @@ export default function App() {
       </div>
     </div>
   );
+
+  // ── 定休曜日ピッカー共通UI ──────────────────
+  // restDays: [{dow, type}], onChange: (newRestDays)=>void, targetId: staffId or "new"
+  const RestDayPicker=({restDays, onChange, targetId})=>{
+    const DAYS=["月","火","水","木","金","土"];
+    return (
+      <div>
+        <div style={{fontSize:8,color:"var(--mut)",fontWeight:700,marginBottom:5,letterSpacing:".3px"}}>定休曜日</div>
+        <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
+          {DAYS.map((d,i)=>{
+            const dow=i+1;
+            const entry=(restDays||[]).find(r=>r.dow===dow);
+            const type=entry?.type||null;
+            const isOpen=rdPop?.targetId===targetId&&rdPop?.dow===dow;
+
+            // ボタンの色
+            let bg="#f8fafc", color="#94a3b8", border="#e2e8f0", label=d;
+            if(type==="全日"){  bg="#0f4c8a"; color="#fff"; border="#0f4c8a"; label=d+"✕"; }
+            if(type==="午前"){ bg="#0891b2"; color="#fff"; border="#0891b2"; label=d+"前"; }
+            if(type==="午後"){ bg="#7c3aed"; color="#fff"; border="#7c3aed"; label=d+"後"; }
+
+            return (
+              <div key={dow} className="rdpick">
+                <button type="button"
+                  style={{padding:"4px 8px",borderRadius:6,border:`1.5px solid ${border}`,
+                    background:bg,color,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                    minWidth:34}}
+                  onClick={e=>{
+                    e.stopPropagation();
+                    setRdPop(isOpen?null:{targetId,dow});
+                  }}>
+                  {label}
+                </button>
+                {isOpen&&(
+                  <div className="rdpop" onClick={e=>e.stopPropagation()}>
+                    <div className="rdpop-title">{d}曜日</div>
+                    <div className="rdpop-opts">
+                      <button className={`rdpop-opt none ${!type?"sel":""}`}
+                        onClick={()=>{onChange((restDays||[]).filter(r=>r.dow!==dow));setRdPop(null);}}>
+                        出勤
+                      </button>
+                      <button className={`rdpop-opt ${type==="午前"?"sel-am":""}`}
+                        onClick={()=>{onChange([...(restDays||[]).filter(r=>r.dow!==dow),{dow,type:"午前"}]);setRdPop(null);}}>
+                        🌅 午前休
+                      </button>
+                      <button className={`rdpop-opt ${type==="午後"?"sel-pm":""}`}
+                        onClick={()=>{onChange([...(restDays||[]).filter(r=>r.dow!==dow),{dow,type:"午後"}]);setRdPop(null);}}>
+                        🌇 午後休
+                      </button>
+                      <button className={`rdpop-opt ${type==="全日"?"sel":""}`}
+                        onClick={()=>{onChange([...(restDays||[]).filter(r=>r.dow!==dow),{dow,type:"全日"}]);setRdPop(null);}}>
+                        🌙 全日休
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {(restDays||[]).length>0&&(
+          <div style={{marginTop:5,fontSize:9,color:"var(--mut)"}}>
+            {(restDays||[]).sort((a,b)=>a.dow-b.dow).map(r=>{
+              const dayName=["月","火","水","木","金","土"][r.dow-1];
+              const typeColor=r.type==="午前"?"#0891b2":r.type==="午後"?"#7c3aed":"#0f4c8a";
+              return <span key={r.dow} style={{display:"inline-block",marginRight:6,color:typeColor,fontWeight:700}}>{dayName}曜{r.type}</span>;
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // ── KOT TAB ────────────────────────────────
   const KotTab=()=>{
