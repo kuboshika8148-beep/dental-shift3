@@ -1232,8 +1232,8 @@ export default function App() {
                           }}
                           ref={el=>{if(el)el.style.setProperty("background",
                             hol||dow===0?"#fef2f2":kiValid?"#d1fae5":dow===6?"#dbeafe":rv.bg+"55","important")}}>
-                          <div style={{fontSize:11,fontWeight:800,color:hol||dow===0?"#9ca3af":rv.color,lineHeight:1.2}}>{d}</div>
-                          <div style={{fontSize:8,fontWeight:600,color:hol||dow===0?"#c4b5b5":rv.color+"aa",lineHeight:1}}>{DAYS_JP[dow]}</div>
+                          <div style={{fontSize:11,fontWeight:800,color:hol||dow===0?"#9ca3af":"#374151",lineHeight:1.2}}>{d}</div>
+                          <div style={{fontSize:8,fontWeight:600,color:hol||dow===0?"#c4b5b5":"#94a3b8",lineHeight:1}}>{DAYS_JP[dow]}</div>
                         </td>
                       );
                     })}
