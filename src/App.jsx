@@ -131,11 +131,8 @@ function dailyH(wh) {
 function autoSchedule(y,m,staff,minStaff,kyoseiAssignedManual={},kyoseiRestManual={},customKyoseiDays={}) {
   const total=dim(y,m);
   const shifts={};
-  // 週ごとの出勤日数 staffId -> weekKey(月曜) -> count
-  const weekWork={};
-  staff.forEach(s=>{ weekWork[s.id]={}; });
 
-  // 矯正日
+  // ── 矯正日 ──
   const kyoseiDays = Object.keys(customKyoseiDays).length > 0
     ? customKyoseiDays
     : (() => {
@@ -147,7 +144,7 @@ function autoSchedule(y,m,staff,minStaff,kyoseiAssignedManual={},kyoseiRestManua
         return map;
       })();
 
-  // 矯正当番
+  // ── 矯正当番アサイン ──
   const kyoseiStaff=staff.filter(s=>KYOSEI_ROLES.has(s.role)&&s.kyoseiOrder!=null)
     .sort((a,b)=>a.kyoseiOrder-b.kyoseiOrder);
   let kyoseiRotIdx=0;
@@ -161,71 +158,137 @@ function autoSchedule(y,m,staff,minStaff,kyoseiAssignedManual={},kyoseiRestManua
     }
   });
 
-  // 月曜基準の週キー
+  // ── 月曜基準の週キー ──
   function mwkey(d){
     const dow=new Date(y,m,d).getDay();
     return d-(dow===0?6:dow-1);
   }
 
+  // ── 週ごとの営業日リスト（日曜・祝日除く） ──
+  const weekAllDays={}; // weekKey -> [d, ...]  土曜含む
+  for(let d=1;d<=total;d++){
+    const dow=new Date(y,m,d).getDay();
+    if(dow===0||isHoliday(y,m,d)) continue;
+    const wk=mwkey(d);
+    if(!weekAllDays[wk]) weekAllDays[wk]=[];
+    weekAllDays[wk].push(d);
+  }
+
+  // ── スタッフごとに週休日を事前決定 ──
+  // weeklyDaysOff=2:   週2日休み → 営業日から2日休む
+  // weeklyDaysOff=2.5: 週2.5日休み → 1日＋半日休む（全日1日＋半日1日）
+  // weeklyDaysOff=3:   週3日休み → 営業日から3日休む
+  // weeklyDaysOff=null（パート）: 定休のみ
+  const restDaysSet={};   // staffId -> Set<day>  全日休み
+  const halfDaysSet={};   // staffId -> Set<day>  半日休み（午前or午後）
+  staff.forEach(s=>{
+    restDaysSet[s.id]=new Set();
+    halfDaysSet[s.id]=new Set();
+    if(!s.weeklyDaysOff) return;
+
+    const is25 = s.weeklyDaysOff===2.5;
+    // 2.5日 → 全日1日+半日1日 = 実質2日分の処理
+    // 2日  → 全日2日
+    // 3日  → 全日3日
+    const fullDaysNeeded = is25 ? 1 : s.weeklyDaysOff;
+
+    Object.entries(weekAllDays).forEach(([wkStr,wkDays])=>{
+      // 定休（全日）に当たる日
+      const fixedRestDays=wkDays.filter(d=>{
+        const dow=new Date(y,m,d).getDay();
+        return (s.restDays||[]).some(r=>r.dow===dow&&r.type==="全日");
+      });
+      // 定休（半日）に当たる日
+      const fixedHalfDays=wkDays.filter(d=>{
+        const dow=new Date(y,m,d).getDay();
+        return (s.restDays||[]).some(r=>r.dow===dow&&(r.type==="午前"||r.type==="午後"));
+      });
+
+      // 変更可能な日（定休・矯正当番以外）
+      const flexible=wkDays.filter(d=>{
+        if(fixedRestDays.includes(d)) return false;
+        if(fixedHalfDays.includes(d)) return false;
+        if(kyoseiAssigned[d]===s.id) return false;
+        return true;
+      });
+
+      const sats=flexible.filter(d=>new Date(y,m,d).getDay()===6);
+      const weekdays=flexible.filter(d=>new Date(y,m,d).getDay()!==6);
+      const offset=(s.id*3+Number(wkStr))%Math.max(weekdays.length,1);
+      const rotated=[...weekdays.slice(offset),...weekdays.slice(0,offset)];
+      const candidates=[...sats,...rotated];
+
+      // 全日休みを追加
+      const extraFullNeeded=Math.max(0, fullDaysNeeded-fixedRestDays.length);
+      let taken=0;
+      for(const d of candidates){
+        if(taken>=extraFullNeeded) break;
+        restDaysSet[s.id].add(d);
+        taken++;
+      }
+
+      // 週休2.5日の場合、さらに半日休みを1日追加
+      if(is25){
+        const usedDays=new Set([...fixedRestDays,...restDaysSet[s.id]]);
+        const halfCandidates=wkDays.filter(d=>!usedDays.has(d)&&kyoseiAssigned[d]!==s.id);
+        // 半日はスタッフIDと週で交互に午前/午後を切り替え
+        if(halfCandidates.length>0){
+          const halfIdx=(s.id+Number(wkStr))%halfCandidates.length;
+          halfDaysSet[s.id].add(halfCandidates[halfIdx]);
+        }
+      }
+    });
+  });
+
+  // ── シフト生成 ──
   for(let d=1;d<=total;d++){
     const dow=new Date(y,m,d).getDay();
     const hol=isHoliday(y,m,d);
-    // 日曜・祝日は全員スキップ
     if(dow===0||hol) continue;
 
-    const wk=mwkey(d);
     const ki=kyoseiDays[d];
-    const isSat=dow===6;
 
-    Object.keys(ROLES).forEach(role=>{
-      const rs=staff.filter(s=>s.role===role);
+    staff.forEach(s=>{
+      const restEntry=(s.restDays||[]).find(r=>r.dow===dow);
+      const isHalfAM=restEntry?.type==="午前";
+      const isHalfPM=restEntry?.type==="午後";
 
-      rs.forEach(s=>{
-        // 定休日チェック
-        const restEntry=(s.restDays||[]).find(r=>r.dow===dow);
-        const isRestDay=restEntry?.type==="全日";
-        const isHalfAM=restEntry?.type==="午前";
-        const isHalfPM=restEntry?.type==="午後";
+      // 定休（全日）
+      if(restEntry?.type==="全日"){ shifts[`${s.id}_${d}`]="休み"; return; }
 
-        if(isRestDay){
-          shifts[`${s.id}_${d}`]="休み";
+      // 全日休み（週休割当）
+      if(restDaysSet[s.id].has(d)){ shifts[`${s.id}_${d}`]="休み"; return; }
+
+      // 矯正日
+      if(ki){
+        if(kyoseiAssigned[d]===s.id){
+          // 当番：土曜矯正は矯正当番_土、木曜は矯正当番_木
+          shifts[`${s.id}_${d}`]=ki.type==="土"?"矯正当番_土":"矯正当番_木";
           return;
         }
-
-        // 週の最大出勤日数（土曜は0.5日扱い）
-        const maxDays = s.weeklyDaysOff===3 ? 4 : s.weeklyDaysOff===2 ? 5 : 99;
-        const wc = weekWork[s.id][wk]||0;
-        const needRest = wc >= maxDays;
-
-        // 矯正日
-        if(ki){
-          if(kyoseiAssigned[d]===s.id){
-            // 当番
-            shifts[`${s.id}_${d}`]=ki.type==="土"?"矯正当番_土":"矯正当番_木";
-            weekWork[s.id][wk]=(weekWork[s.id][wk]||0)+(isSat?0.5:1);
-          } else if(kyoseiRestManual[s.id]?.has(d)){
-            shifts[`${s.id}_${d}`]="休み";
-          } else if(needRest){
-            shifts[`${s.id}_${d}`]="休み";
-          } else {
-            if(isHalfAM) shifts[`${s.id}_${d}`]="午前半休";
-            else if(isHalfPM) shifts[`${s.id}_${d}`]="午後半休";
-            else shifts[`${s.id}_${d}`]=isSat?"土曜出勤":"出勤";
-            weekWork[s.id][wk]=(weekWork[s.id][wk]||0)+(isSat?0.5:1);
-          }
-          return;
+        if(kyoseiRestManual[s.id]?.has(d)){
+          shifts[`${s.id}_${d}`]="休み"; return;
         }
-
-        // 通常日
-        if(needRest){
-          shifts[`${s.id}_${d}`]="休み";
-        } else {
-          if(isHalfAM) shifts[`${s.id}_${d}`]="午前半休";
-          else if(isHalfPM) shifts[`${s.id}_${d}`]="午後半休";
-          else shifts[`${s.id}_${d}`]=isSat?"土曜出勤":"出勤";
-          weekWork[s.id][wk]=(weekWork[s.id][wk]||0)+(isSat?0.5:1);
+        // 矯正日の非当番：半日設定があれば半日、なければ通常出勤
+        if(isHalfAM){ shifts[`${s.id}_${d}`]="午前半休"; return; }
+        if(isHalfPM){ shifts[`${s.id}_${d}`]="午後半休"; return; }
+        if(halfDaysSet[s.id]?.has(d)){
+          shifts[`${s.id}_${d}`]=s.id%2===1?"午前半休":"午後半休"; return;
         }
-      });
+        // 矯正日非当番の通常出勤（土曜は土曜出勤）
+        shifts[`${s.id}_${d}`]=dow===6?"土曜出勤":"出勤"; return;
+      }
+
+      // 通常日（土曜含む）
+      if(isHalfAM){
+        shifts[`${s.id}_${d}`]="午前半休";
+      } else if(isHalfPM){
+        shifts[`${s.id}_${d}`]="午後半休";
+      } else if(halfDaysSet[s.id]?.has(d)){
+        shifts[`${s.id}_${d}`]=s.id%2===1?"午前半休":"午後半休";
+      } else {
+        shifts[`${s.id}_${d}`]=dow===6?"土曜出勤":"出勤";
+      }
     });
   }
   return shifts;
