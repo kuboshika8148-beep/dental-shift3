@@ -736,7 +736,6 @@ export default function App() {
   const [kotData, setKotData] = useState(null);
   const [kotDrag, setKotDrag] = useState(false);
   const [rdPop,   setRdPop]   = useState(null);
-  const [kyoseiAddId, setKyoseiAddId] = useState("");
   const [extraKyosei,   setExtraKyosei]   = useState([]);
   const [deletedKyosei, setDeletedKyosei] = useState([]);
   const [clinicHolidays, setClinicHolidays] = useState([]); // [{date:"YYYY-MM-DD", label:"お盆休み"}]
@@ -1283,32 +1282,29 @@ export default function App() {
     );
   };
 
-  // ── KYOSEI ROTATION TAB ────────────────────
+  // ── KYOSEI TAB ────────────────────
   const KyoseiTab=()=>{
-    const eligible=staff.filter(s=>s.active&&KYOSEI_ROLES.has(s.role));
-    const withOrder=eligible.filter(s=>s.kyoseiOrder!=null).sort((a,b)=>a.kyoseiOrder-b.kyoseiOrder);
-    const without=eligible.filter(s=>s.kyoseiOrder==null);
-    const addId=kyoseiAddId;
-    const setAddId=setKyoseiAddId;
-
-    // 矯正日スケジュール
+    // 矯正日スケジュール（当番はシフトから検索）
     const schedule=(()=>{
       const res=[];
-      let idx=0;
       for(let d=1;d<=D;d++){
-        const ki=kyoseiInfo(year,month,d);
+        const ki=kyoseiDays[d];
         if(ki){
-          const s=withOrder[idx%withOrder.length];
-          res.push({day:d,ki,staff:s});
-          idx++;
+          const tban=staff.filter(s=>s.active).find(s=>
+            shifts[`${s.id}_${d}`]==="矯正当番_土"||shifts[`${s.id}_${d}`]==="矯正当番_木"
+          );
+          res.push({day:d,ki,tban});
         }
       }
       return res;
     })();
 
+    // 矯正当番対象スタッフ
+    const eligible=staff.filter(s=>s.active&&KYOSEI_ROLES.has(s.role));
+
     return (
       <div>
-        <div className="ph"><div className="ptitle">矯正当番 ローテーション</div></div>
+        <div className="ph"><div className="ptitle">矯正当番</div></div>
 
         {/* 矯正日管理 */}
         <div className="krot-wrap" style={{marginBottom:14}}>
@@ -1320,7 +1316,6 @@ export default function App() {
           {/* 今月の矯正日一覧 */}
           <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
             {Object.entries(kyoseiDays).sort((a,b)=>Number(a[0])-Number(b[0])).map(([d,ki])=>{
-              const dateKey=`${year}-${month}-${d}`;
               const isExtra=extraKyosei.some(k=>k.year===year&&k.month===month&&k.day===Number(d));
               return (
                 <div key={d} style={{display:"flex",alignItems:"center",gap:5,
@@ -1367,7 +1362,7 @@ export default function App() {
             </div>
             <div>
               <div style={{fontSize:9,fontWeight:700,color:"var(--mut)",marginBottom:3}}>ラベル</div>
-              <input id="kyosei-add-label" placeholder="例: 第3土" defaultValue=""
+              <input id="kyosei-add-label" placeholder="例: 第3土"
                 style={{width:80,padding:"6px 8px",border:"1.5px solid #e2e8f0",borderRadius:6,fontSize:12,fontFamily:"inherit"}}/>
             </div>
             <button className="svbtn" style={{fontSize:11}}
@@ -1376,7 +1371,6 @@ export default function App() {
                 const type=document.getElementById("kyosei-add-type").value;
                 const label=document.getElementById("kyosei-add-label").value||`${month+1}/${day}`;
                 if(!day||day<1||day>31){toast_("日付を入力してください");return;}
-                // すでに存在する場合は削除リストから外す
                 const dateKey=`${year}-${month}-${day}`;
                 setDeletedKyosei(ps=>ps.filter(k=>k!==dateKey));
                 setExtraKyosei(ps=>[...ps.filter(k=>!(k.year===year&&k.month===month&&k.day===day)),
@@ -1387,118 +1381,60 @@ export default function App() {
               }}>＋ 追加</button>
           </div>
         </div>
-        <div className="krot-wrap" style={{marginBottom:16}}>
-          <div className="cpt">📅 {year}年{month+1}月 矯正当番スケジュール</div>
-          <div className="mnav" style={{display:"inline-flex",marginBottom:12}}>
-            <button onClick={()=>{if(month===0){setMonth(11);setYear(y=>y-1);}else setMonth(m=>m-1);}}>‹</button>
-            <span className="mlbl">{year}/{String(month+1).padStart(2,"0")}</span>
-            <button onClick={()=>{if(month===11){setMonth(0);setYear(y=>y+1);}else setMonth(m=>m+1);}}>›</button>
-          </div>
-          {schedule.length===0
-            ?<div style={{fontSize:12,color:"var(--mut)"}}>今月の矯正日はありません</div>
-            :<div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-              {schedule.map(({day,ki,staff:s})=>(
-                <div key={day} style={{background:"#f0fdfa",border:"1px solid #6ee7b7",borderRadius:9,padding:"10px 14px",minWidth:160}}>
-                  <div style={{fontSize:11,fontWeight:800,color:"#065f46"}}>{month+1}/{day}（{ki.label}）</div>
-                  <div style={{fontSize:10,color:"#047857",margin:"3px 0"}}>{ki.type==="土"?"14:00〜17:30":"14:00〜18:30"}</div>
-                  {s
-                    ?<div style={{fontSize:12,fontWeight:700,color:"var(--txt)"}}>{s.name}
-                      <span style={{fontSize:9,marginLeft:5,color:ROLES[s.role].color,background:ROLES[s.role].bg,padding:"1px 5px",borderRadius:6,fontWeight:800}}>{s.role}</span>
-                    </div>
-                    :<div style={{fontSize:11,color:"#dc2626",fontWeight:700}}>担当未設定</div>
-                  }
-                </div>
-              ))}
-            </div>
-          }
-        </div>
 
-        {/* ローテーション順序 */}
-        <div className="krot-wrap">
-          <div className="cpt">🔄 ローテーション順（Dh・Da・受付）</div>
-          <div style={{fontSize:11,color:"var(--mut)",marginBottom:10}}>
-            ↑↓ボタンで順番を変更できます。矯正日ごとに上から順番に担当します。
-          </div>
-          <div className="krot-grid">
-            {withOrder.map((s,i)=>{
-              const rv=ROLES[s.role];
-              return (
-                <div className="krot-card" key={s.id}>
-                  <div className="krot-num">{i+1}</div>
-                  <div className="krot-info">
-                    <div className="n">{s.name}</div>
-                    <div className="r" style={{color:rv.color}}>{rv.label}</div>
-                  </div>
-                  <div style={{marginLeft:"auto",display:"flex",gap:3}}>
-                    <button className="sb" style={{padding:"2px 6px"}} disabled={i===0}
-                      onClick={()=>setStaff(ps=>{
-                        const arr=[...ps];
-                        const ai=arr.findIndex(x=>x.id===s.id);
-                        const bi=arr.findIndex(x=>x.id===withOrder[i-1].id);
-                        [arr[ai].kyoseiOrder,arr[bi].kyoseiOrder]=[arr[bi].kyoseiOrder,arr[ai].kyoseiOrder];
-                        return [...arr];
-                      })}>↑</button>
-                    <button className="sb" style={{padding:"2px 6px"}} disabled={i===withOrder.length-1}
-                      onClick={()=>setStaff(ps=>{
-                        const arr=[...ps];
-                        const ai=arr.findIndex(x=>x.id===s.id);
-                        const bi=arr.findIndex(x=>x.id===withOrder[i+1].id);
-                        [arr[ai].kyoseiOrder,arr[bi].kyoseiOrder]=[arr[bi].kyoseiOrder,arr[ai].kyoseiOrder];
-                        return [...arr];
-                      })}>↓</button>
-                    <button className="sb del"
-                      onClick={()=>{setStaff(ps=>ps.map(x=>x.id===s.id?{...x,kyoseiOrder:null}:x));toast_(`${s.name} をローテーションから除外しました`);}}>除外</button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* 未追加スタッフ */}
-          {without.length>0&&(
-            <div className="krot-add">
-              <span style={{fontSize:11,color:"var(--mut)",fontWeight:600}}>ローテーションに追加:</span>
-              <select className="krot-sel" value={addId} onChange={e=>setAddId(e.target.value)}>
-                <option value="">-- 選択 --</option>
-                {without.map(s=><option key={s.id} value={s.id}>{s.name}（{ROLES[s.role].label}）</option>)}
-              </select>
-              <button className="svbtn" onClick={()=>{
-                if(!addId) return;
-                const maxOrd=Math.max(0,...withOrder.map(s=>s.kyoseiOrder||0));
-                setStaff(ps=>ps.map(x=>x.id===Number(addId)?{...x,kyoseiOrder:maxOrd+1}:x));
-                setAddId("");
-                toast_("ローテーションに追加しました");
-              }}>追加</button>
-            </div>
-          )}
-        </div>
-
-        {/* 矯正日 休み入力→残り出勤 */}
+        {/* 当番割り当て＆休み入力 */}
         {schedule.length>0&&(
-          <div className="krot-wrap" style={{marginTop:14}}>
-            <div className="cpt">😴 矯正日の休み入力 → 残り全員出勤</div>
+          <div className="krot-wrap">
+            <div className="cpt">🦷 矯正当番 割り当て＆休み入力</div>
             <div style={{fontSize:11,color:"var(--mut)",marginBottom:12}}>
-              矯正日ごとに休む人を選んで「適用」すると、それ以外の全員が出勤になります。<br/>
-              当番者は矯正当番シフト、DrはDr出勤、その他は通常出勤になります。
+              当番者を選び、休む人をタップ→「✅ 適用」で一括反映します。
             </div>
-            {schedule.map(({day,ki,staff:tban})=>{
+            {schedule.map(({day,ki,tban})=>{
               const allActive=staff.filter(s=>s.active);
               const dow=new Date(year,month,day).getDay();
-              // 現在の休みスタッフ
               const currentRest=allActive.filter(s=>shifts[`${s.id}_${day}`]==="休み").map(s=>s.id);
               return (
-                <div key={day} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"12px 14px",marginBottom:10}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                <div key={day} style={{background:"#f8fafc",border:"1px solid #e2e8f0",
+                  borderRadius:10,padding:"12px 14px",marginBottom:10}}>
+                  {/* ヘッダー */}
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}>
                     <span style={{fontWeight:800,fontSize:12,color:"#065f46"}}>
                       {month+1}/{day}（{ki.label}）
                     </span>
                     <span style={{fontSize:10,color:"#047857"}}>{ki.type==="土"?"14:00〜17:30":"14:00〜18:30"}</span>
-                    {tban&&<span style={{fontSize:9,background:"#d1fae5",color:"#065f46",padding:"2px 7px",borderRadius:8,fontWeight:800}}>当番:{tban.name}</span>}
-                    <button className="svbtn" style={{marginLeft:"auto",fontSize:10,padding:"5px 12px"}}
+                    {/* 当番者セレクト */}
+                    <div style={{display:"flex",alignItems:"center",gap:5,marginLeft:"auto"}}>
+                      <span style={{fontSize:9,fontWeight:700,color:"var(--mut)"}}>当番:</span>
+                      <select
+                        value={tban?.id||""}
+                        onChange={e=>{
+                          const sid=Number(e.target.value);
+                          setShifts(prev=>{
+                            const next={...prev};
+                            // 既存の当番シフトをクリア
+                            allActive.forEach(s=>{
+                              const k=`${s.id}_${day}`;
+                              if(next[k]==="矯正当番_土"||next[k]==="矯正当番_木") delete next[k];
+                            });
+                            if(sid) next[`${sid}_${day}`]=ki.type==="土"?"矯正当番_土":"矯正当番_木";
+                            return next;
+                          });
+                          const s=staff.find(x=>x.id===sid);
+                          toast_(sid?`${s?.name} を当番に設定しました`:"当番をクリアしました");
+                        }}
+                        style={{padding:"4px 8px",border:"1.5px solid #6ee7b7",borderRadius:6,
+                          fontSize:11,fontFamily:"inherit",background:"#f0fdfa",color:"#065f46",fontWeight:700}}>
+                        <option value="">-- 未設定 --</option>
+                        {eligible.map(s=>{
+                          const rv=ROLES[s.role];
+                          return <option key={s.id} value={s.id}>{s.name}（{rv.short}）</option>;
+                        })}
+                      </select>
+                    </div>
+                    <button className="svbtn" style={{fontSize:10,padding:"5px 12px"}}
                       onClick={()=>{
-                        // 休みの人のIDセット
                         const restIds=new Set(
-                          allActive.filter((s,_)=>{
+                          allActive.filter(s=>{
                             const btn=document.getElementById(`kyrest_${day}_${s.id}`);
                             return btn?.dataset.on==="1";
                           }).map(s=>s.id)
@@ -1511,8 +1447,6 @@ export default function App() {
                               next[key]="休み";
                             } else if(s.id===tban?.id){
                               next[key]=ki.type==="土"?"矯正当番_土":"矯正当番_木";
-                            } else if(s.role==="Dr"){
-                              next[key]=dow===6?"土曜出勤":"出勤";
                             } else {
                               next[key]=dow===6?"土曜出勤":"出勤";
                             }
@@ -1522,6 +1456,7 @@ export default function App() {
                         toast_(`${month+1}/${day} のシフトを適用しました`);
                       }}>✅ 適用</button>
                   </div>
+                  {/* 休む人選択 */}
                   <div style={{fontSize:9,color:"var(--mut)",fontWeight:700,marginBottom:6}}>休む人をタップ（青=休み）</div>
                   <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
                     {allActive.map(s=>{
@@ -1529,8 +1464,7 @@ export default function App() {
                       const isRest=currentRest.includes(s.id);
                       return (
                         <button key={s.id} id={`kyrest_${day}_${s.id}`}
-                          data-on={isRest?"1":"0"}
-                          type="button"
+                          data-on={isRest?"1":"0"} type="button"
                           style={{padding:"4px 9px",borderRadius:6,
                             border:`1.5px solid ${isRest?"#0f4c8a":"#e2e8f0"}`,
                             background:isRest?"#0f4c8a":"#f8fafc",
@@ -1543,7 +1477,8 @@ export default function App() {
                             e.currentTarget.style.color=on?"#374151":"#fff";
                             e.currentTarget.style.borderColor=on?"#e2e8f0":"#0f4c8a";
                           }}>
-                          <span style={{fontSize:8,marginRight:3,background:rv.bg,color:rv.color,padding:"0 3px",borderRadius:3,fontWeight:800}}>{s.role}</span>
+                          <span style={{fontSize:8,marginRight:3,background:rv.bg,color:rv.color,
+                            padding:"0 3px",borderRadius:3,fontWeight:800}}>{s.role}</span>
                           {s.name}
                         </button>
                       );
@@ -1557,6 +1492,7 @@ export default function App() {
       </div>
     );
   };
+
   const PaidTab=()=>{
     const vs=isA?staff.filter(s=>s.active):[mySt].filter(Boolean);
     return (
