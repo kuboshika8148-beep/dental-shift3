@@ -1254,23 +1254,26 @@ export default function App() {
                         const dow=new Date(y,m,d).getDay();
                         const hol=isClinicHoliday(y,m,d);
                         const ki=m===month?kyoseiDays[d]:null;
-                        const sh=shifts[`${s.id}_${y}_${m}_${d}`]||shifts[`${s.id}_${d}`];
-                        const ws=wishes[`${s.id}_${d}`];
+                        const isOff = hol || dow === 0; // 日曜・祝日
+                        const sh = isOff ? null : (shifts[`${s.id}_${y}_${m}_${d}`]||shifts[`${s.id}_${d}`]);
+                        const ws = isOff ? null : wishes[`${s.id}_${d}`];
                         const st=SHIFT_TYPES[sh];
-                        const inSeminar=seminars.some(sm=>{
+                        const inSeminar=!isOff&&seminars.some(sm=>{
                           const sd=new Date(sm.date);
                           return sd.getFullYear()===y&&sd.getMonth()===m&&sd.getDate()===d&&sm.staffIds.includes(s.id);
                         });
                         const isNewMonth=calStart===11&&d===1;
                         let tdCls="";
-                        if(hol||dow===0) tdCls="td-hol";
+                        if(isOff) tdCls="td-hol";
                         else if(ki) tdCls="td-k";
                         else if(dow===6) tdCls="td-sat";
                         return (
                           <td key={`${y}-${m}-${d}`} className={tdCls}
                             style={{...(inSeminar?{outline:"2px solid #d8b4fe",outlineOffset:"-2px",background:"#fdf4ff"}:{}),
                               ...(isNewMonth?{borderLeft:"2px solid #f59e0b"}:{})}}>
-                            {sh?(
+                            {isOff ? (
+                              inSeminar ? <span className="sem-dot" style={{display:"block",margin:"auto"}}/> : null
+                            ) : sh?(
                               <button className="scl"
                                 style={{background:st?.bg||"#f3f4f6",color:st?.color||"#9ca3af"}}
                                 onClick={()=>isA&&setModal({staffId:s.id,day:d,month:m,year:y,staffName:s.name})}
