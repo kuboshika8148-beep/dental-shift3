@@ -128,22 +128,28 @@ function dailyH(wh) {
 // ═══════════════════════════════════════════════════════
 // AUTO SCHEDULER
 // ═══════════════════════════════════════════════════════
-function autoSchedule(y,m,staff,minStaff,kyoseiAssignedManual={},kyoseiRestManual={}) {
+function autoSchedule(y,m,staff,minStaff,kyoseiAssignedManual={},kyoseiRestManual={},customKyoseiDays={}) {
   const total=dim(y,m);
   const shifts={};
-  const weekWork={};
-  const workCount={};
+  // 週ごとの出勤日数カウント（月曜基準）
+  const weekWork={}; // staffId -> { weekKey -> count }
+  const workCount={}; // staffId -> total work days
 
   staff.forEach(s=>{ weekWork[s.id]={}; workCount[s.id]=0; });
 
-  // 先に矯正日を特定
-  const kyoseiDays={};
-  for(let d=1;d<=total;d++){
-    const ki=kyoseiInfo(y,m,d);
-    if(ki) kyoseiDays[d]=ki;
-  }
+  // 矯正日：カスタム設定があればそれを使う、なければkyoseiInfo
+  const kyoseiDays = Object.keys(customKyoseiDays).length > 0
+    ? customKyoseiDays
+    : (() => {
+        const map={};
+        for(let d=1;d<=total;d++){
+          const ki=kyoseiInfo(y,m,d);
+          if(ki) map[d]=ki;
+        }
+        return map;
+      })();
 
-  // 矯正当番：手動設定があればそれを優先、なければkyoseiOrderでローテーション
+  // 矯正当番：手動設定があればそれを優先
   const kyoseiStaff=staff.filter(s=>KYOSEI_ROLES.has(s.role)&&s.kyoseiOrder!=null)
     .sort((a,b)=>a.kyoseiOrder-b.kyoseiOrder);
   let kyoseiRotIdx=0;
@@ -151,7 +157,6 @@ function autoSchedule(y,m,staff,minStaff,kyoseiAssignedManual={},kyoseiRestManua
   Object.keys(kyoseiDays).forEach(ds=>{
     const d=Number(ds);
     if(kyoseiAssignedManual[d]){
-      // 手動設定済み → そのまま使う
       kyoseiAssigned[d]=kyoseiAssignedManual[d];
     } else if(kyoseiStaff.length>0){
       kyoseiAssigned[d]=kyoseiStaff[kyoseiRotIdx%kyoseiStaff.length].id;
@@ -159,25 +164,37 @@ function autoSchedule(y,m,staff,minStaff,kyoseiAssignedManual={},kyoseiRestManua
     }
   });
 
+  // 月曜基準の週キー
+  function mwkey(d){
+    const dow=new Date(y,m,d).getDay();
+    const monday=d-(dow===0?6:dow-1); // 月曜日の日付
+    return monday;
+  }
+
+  // スタッフごとの週所定日数（weeklyDaysOff考慮）
+  function getMaxWorkDays(s, weekHasHoliday){
+    // weeklyDaysOff: 2=週休2日(5日勤), 3=週休3日(4日勤), null=パート
+    const base = s.weeklyDaysOff===3 ? 4 : s.weeklyDaysOff===2 ? 5 : 5;
+    // 祝日がある週は1日分減らすが最低でも定休+祝日を考慮
+    return weekHasHoliday ? Math.max(base-1, 1) : base;
+  }
+
   for(let d=1;d<=total;d++){
     const date=new Date(y,m,d);
     const dow=date.getDay();
     const hol=isHoliday(y,m,d);
-    const wk=wkey(y,m,d);
+    const wk=mwkey(d);
     const ki=kyoseiDays[d];
 
-    // 日曜・祝日 → 全員休み
-    if(dow===0||hol){
-      staff.forEach(s=>{ shifts[`${s.id}_${d}`]="休み"; });
-      continue;
-    }
+    // 日曜・祝日 → スキップ（シフト不要）
+    if(dow===0||hol) continue;
 
-    // 祝日週かどうか
-    const hasHolWeek=[0,1,2,3,4,5,6].some(i=>{
-      const dd=d-dow+i;
+    // この週に祝日があるか
+    const weekStart=wk;
+    const hasHolWeek=[1,2,3,4,5,6].some(i=>{
+      const dd=weekStart+i-1;
       return dd>=1&&dd<=total&&isHoliday(y,m,dd);
     });
-    const maxDays=hasHolWeek?4:5;
 
     Object.keys(ROLES).forEach(role=>{
       const rs=staff.filter(s=>s.role===role);
@@ -187,7 +204,9 @@ function autoSchedule(y,m,staff,minStaff,kyoseiAssignedManual={},kyoseiRestManua
       let assigned=0;
       sorted.forEach(s=>{
         const wc=weekWork[s.id][wk]||0;
+        const maxDays=getMaxWorkDays(s, hasHolWeek);
         const needRest=wc>=maxDays;
+
         // 定休曜日チェック
         const restEntry=(s.restDays||[]).find(r=>r.dow===dow);
         const isRestDay=restEntry?.type==="全日";
@@ -207,19 +226,15 @@ function autoSchedule(y,m,staff,minStaff,kyoseiAssignedManual={},kyoseiRestManua
         // 矯正日の処理
         if(ki){
           if(kyoseiAssigned[d]===s.id){
-            // 当番 → 矯正当番シフト
             shifts[`${s.id}_${d}`]=ki.type==="土"?"矯正当番_土":"矯正当番_木";
             workCount[s.id]=(workCount[s.id]||0)+1;
             weekWork[s.id][wk]=(weekWork[s.id][wk]||0)+1;
             assigned++;
           } else if(kyoseiRestManual[s.id]?.has(d)){
-            // 手動で休みに設定済み → 休みを維持
             shifts[`${s.id}_${d}`]="休み";
           } else if(needRest&&assigned>=req){
-            // 週の出勤上限超え → 休み
             shifts[`${s.id}_${d}`]="休み";
           } else {
-            // 非当番・通常扱い（土曜は土曜出勤）
             if(isHalfAM) shifts[`${s.id}_${d}`]="午前半休";
             else if(isHalfPM) shifts[`${s.id}_${d}`]="午後半休";
             else shifts[`${s.id}_${d}`]=dow===6?"土曜出勤":"出勤";
@@ -228,7 +243,6 @@ function autoSchedule(y,m,staff,minStaff,kyoseiAssignedManual={},kyoseiRestManua
             assigned++;
           }
         } else {
-          // 通常日（土曜は土曜出勤）、半休設定があれば反映
           if(isHalfAM){
             shifts[`${s.id}_${d}`]="午前半休";
           } else if(isHalfPM){
@@ -893,7 +907,7 @@ export default function App() {
         }
       });
     });
-    const s=autoSchedule(year,month,staff.filter(s=>s.active),minSt,kyoseiAssignedManual,kyoseiRestManual);
+    const s=autoSchedule(year,month,staff.filter(s=>s.active),minSt,kyoseiAssignedManual,kyoseiRestManual,kyoseiDays);
     setShifts(s);
     toast_("✨ シフトを自動作成しました");
   }
