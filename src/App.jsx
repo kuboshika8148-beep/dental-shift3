@@ -29,8 +29,8 @@ const SHIFT_TYPES = {
   矯正当番_木:  { label:"矯正当番(木)", color:"#065f46", bg:"#a7f3d0",  hours:6.5  }, // 8:45-12:30+14:00-18:30
   休み:       { label:"休み",         color:"#9ca3af", bg:"#f3f4f6",  hours:0    },
   有給:       { label:"有給",         color:"#d97706", bg:"#fef3c7",  hours:0    },
-  午前半休:    { label:"午前半休",     color:"#c2410c", bg:"#ffedd5",  hours:4.125 },
-  午後半休:    { label:"午後半休",     color:"#a16207", bg:"#fef9c3",  hours:4.125 },
+  午前半休:    { label:"午後出勤（午前休）",  color:"#c2410c", bg:"#ffedd5",  hours:4.125 },
+  午後半休:    { label:"午前出勤（午後休）",  color:"#a16207", bg:"#fef9c3",  hours:4.125 },
 };
 
 const DAYS_JP = ["日","月","火","水","木","金","土"];
@@ -207,7 +207,7 @@ function autoSchedule(y,m,staff,minStaff,kyoseiAssignedManual={},kyoseiRestManua
         // 矯正日の処理
         if(ki){
           if(kyoseiAssigned[d]===s.id){
-            // 手動設定当番 → 矯正当番シフト
+            // 当番 → 矯正当番シフト
             shifts[`${s.id}_${d}`]=ki.type==="土"?"矯正当番_土":"矯正当番_木";
             workCount[s.id]=(workCount[s.id]||0)+1;
             weekWork[s.id][wk]=(weekWork[s.id][wk]||0)+1;
@@ -215,13 +215,17 @@ function autoSchedule(y,m,staff,minStaff,kyoseiAssignedManual={},kyoseiRestManua
           } else if(kyoseiRestManual[s.id]?.has(d)){
             // 手動で休みに設定済み → 休みを維持
             shifts[`${s.id}_${d}`]="休み";
-          } else if(!needRest||assigned<req){
-            shifts[`${s.id}_${d}`]=role==="Dr"?"出勤":"休み";
+          } else if(needRest&&assigned>=req){
+            // 週の出勤上限超え → 休み
+            shifts[`${s.id}_${d}`]="休み";
+          } else {
+            // 非当番・通常扱い（土曜は土曜出勤）
+            if(isHalfAM) shifts[`${s.id}_${d}`]="午前半休";
+            else if(isHalfPM) shifts[`${s.id}_${d}`]="午後半休";
+            else shifts[`${s.id}_${d}`]=dow===6?"土曜出勤":"出勤";
             workCount[s.id]=(workCount[s.id]||0)+1;
             weekWork[s.id][wk]=(weekWork[s.id][wk]||0)+1;
             assigned++;
-          } else {
-            shifts[`${s.id}_${d}`]="休み";
           }
         } else {
           // 通常日（土曜は土曜出勤）、半休設定があれば反映
@@ -713,8 +717,8 @@ function shiftLabel(key) {
   if(key==="矯正当番_木") return "矯木";
   if(key==="土曜出勤")    return "土勤";
   if(key==="午前のみ")    return "午前";
-  if(key==="午前半休")    return "午前休";
-  if(key==="午後半休")    return "午後休";
+  if(key==="午前半休")    return "午後出";
+  if(key==="午後半休")    return "午前出";
   return key[0];
 }
 
@@ -870,18 +874,24 @@ export default function App() {
   }
 
   function handleAuto(){
-    // 矯正当番タブで手動設定済みの当番・休み情報を保持
+    // 矯正日の手動設定のみ保持（当番・休み）
+    const kyoseiDaysList=[];
+    for(let d=1;d<=D;d++){
+      if(kyoseiInfo(year,month,d)) kyoseiDaysList.push(d);
+    }
+
     const kyoseiAssignedManual={};
-    const kyoseiRestManual={};   // staffId -> Set of days (休み)
+    const kyoseiRestManual={};
     staff.filter(s=>s.active).forEach(s=>{
-      for(let d=1;d<=D;d++){
+      kyoseiDaysList.forEach(d=>{
         const sh=shifts[`${s.id}_${d}`];
-        if(sh==="矯正当番_土"||sh==="矯正当番_木") kyoseiAssignedManual[d]=s.id;
-        if(sh==="休み"){
+        if(sh==="矯正当番_土"||sh==="矯正当番_木"){
+          kyoseiAssignedManual[d]=s.id;
+        } else if(sh==="休み"){
           if(!kyoseiRestManual[s.id]) kyoseiRestManual[s.id]=new Set();
           kyoseiRestManual[s.id].add(d);
         }
-      }
+      });
     });
     const s=autoSchedule(year,month,staff.filter(s=>s.active),minSt,kyoseiAssignedManual,kyoseiRestManual);
     setShifts(s);
