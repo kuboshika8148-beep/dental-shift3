@@ -1147,7 +1147,7 @@ export default function App() {
             <div className="cpt">⚙️ シフト設定</div>
             <div style={{display:"flex",gap:14,flexWrap:"wrap",alignItems:"flex-start"}}>
               <div className="cpg" style={{flex:2,minWidth:260}}>
-                {Object.entries(ROLES).map(([role,rv])=>(
+                {Object.entries(ROLES).filter(([role])=>role!=="技工士"&&role!=="TC").map(([role,rv])=>(
                   <div className="cpi" key={role}>
                     <label><span style={{background:rv.bg,color:rv.color,padding:"1px 4px",borderRadius:3,fontSize:7,fontWeight:800,marginRight:3}}>{role}</span>最低人数</label>
                     <div className="cpr"><span>出勤</span>
