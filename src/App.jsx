@@ -716,18 +716,81 @@ function shiftLabel(key) {
 // ═══════════════════════════════════════════════════════
 // MAIN APP
 // ═══════════════════════════════════════════════════════
+// SUPABASE CONFIG
+// ═══════════════════════════════════════════════════════
+const SB_URL = "https://gvxdmldpimjvicllrhll.supabase.co";
+const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd2eGRtbGRwaW1qdmljbGxyaGxsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0MTE2OTUsImV4cCI6MjA4Nzk4NzY5NX0.6EnrECgVy79VUNsbRQGL_shmhaWnPAq0BL2uYz6ilF0";
+
+async function sbGet(key) {
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/app_data?key=eq.${key}&select=value`, {
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }
+    });
+    const rows = await res.json();
+    return rows?.[0]?.value ?? null;
+  } catch { return null; }
+}
+
+async function sbSet(key, value) {
+  try {
+    await fetch(`${SB_URL}/rest/v1/app_data`, {
+      method: "POST",
+      headers: {
+        apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`,
+        "Content-Type": "application/json", Prefer: "resolution=merge-duplicates"
+      },
+      body: JSON.stringify({ key, value, updated_at: new Date().toISOString() })
+    });
+  } catch {}
+}
+
+// ─── ストレージhook: 起動時にSupabaseから読み込み、更新時にSupabaseへ保存 ───
+function useDB(key, init) {
+  const initVal = typeof init === "function" ? init() : init;
+  // まずlocalStorageから即座に初期値を取得（画面が素早く表示される）
+  const [val, setVal] = useState(() => {
+    try {
+      const s = localStorage.getItem(key);
+      return s ? JSON.parse(s) : initVal;
+    } catch { return initVal; }
+  });
+  const [synced, setSynced] = useState(false);
+
+  // 起動時にSupabaseから最新データを取得
+  useEffect(() => {
+    sbGet(key).then(remote => {
+      if (remote !== null) {
+        setVal(remote);
+        try { localStorage.setItem(key, JSON.stringify(remote)); } catch {}
+      }
+      setSynced(true);
+    });
+  }, [key]);
+
+  const set = (v) => {
+    setVal(prev => {
+      const next = typeof v === "function" ? v(prev) : v;
+      try { localStorage.setItem(key, JSON.stringify(next)); } catch {}
+      sbSet(key, next); // 非同期でSupabaseに保存
+      return next;
+    });
+  };
+  return [val, set, synced];
+}
+
+// ═══════════════════════════════════════════════════════
 export default function App() {
   const today=new Date();
   const [user,    setUser]    = useState(null);
   const [tab,     setTab]     = useState("shift");
   const [year,    setYear]    = useState(today.getFullYear());
   const [month,   setMonth]   = useState(today.getMonth());
-  const [staff,   setStaff]   = useState(INIT_STAFF);
-  const [shifts,  setShifts]  = useState({});
-  const [wishes,  setWishes]  = useState({});
-  const [minSt,   setMinSt]   = useState(DEFAULT_MIN);
-  const [wh,      setWh]      = useState(DEFAULT_WH);
-  const [whSat,   setWhSat]   = useState(DEFAULT_WH_SAT);
+  const [staff,   setStaff,   staffSynced]  = useDB("ds_staff",   INIT_STAFF);
+  const [shifts,  setShifts]  = useDB("ds_shifts",  {});
+  const [wishes,  setWishes]  = useDB("ds_wishes",  {});
+  const [minSt,   setMinSt]   = useDB("ds_minSt",   DEFAULT_MIN);
+  const [wh,      setWh]      = useDB("ds_wh",       DEFAULT_WH);
+  const [whSat,   setWhSat]   = useDB("ds_whSat",    DEFAULT_WH_SAT);
   const [toast,   setToast]   = useState(null);
   const [modal,   setModal]   = useState(null);
   const [wModal,  setWModal]  = useState(null);
@@ -736,11 +799,11 @@ export default function App() {
   const [kotData, setKotData] = useState(null);
   const [kotDrag, setKotDrag] = useState(false);
   const [rdPop,   setRdPop]   = useState(null);
-  const [extraKyosei,   setExtraKyosei]   = useState([]);
-  const [deletedKyosei, setDeletedKyosei] = useState([]);
-  const [clinicHolidays, setClinicHolidays] = useState([]); // [{date:"YYYY-MM-DD", label:"お盆休み"}]
-  const [seminars, setSeminars] = useState([]); // [{id, name, date, start, end, staffIds:[]}]
-  const [semModal, setSemModal] = useState(null); // null | "add" | seminar.id
+  const [extraKyosei,   setExtraKyosei]   = useDB("ds_extraKyosei",   []);
+  const [deletedKyosei, setDeletedKyosei] = useDB("ds_deletedKyosei", []);
+  const [clinicHolidays, setClinicHolidays] = useDB("ds_clinicHolidays", []);
+  const [seminars, setSeminars] = useDB("ds_seminars", []);
+  const [semModal, setSemModal] = useState(null);
 
   // ポップアップ外クリックで閉じる
   useEffect(()=>{
@@ -1657,10 +1720,29 @@ export default function App() {
     <div>
       <div className="ph">
         <div className="ptitle">スタッフ管理</div>
-        <button className="abtn" style={{fontSize:11,padding:"7px 12px"}}
-          onClick={()=>setAddSt(v=>!v)}>
-          {addSt?"✕ キャンセル":"＋ スタッフ追加"}
-        </button>
+        <div style={{display:"flex",gap:6}}>
+          <button className="abtn" style={{fontSize:11,padding:"7px 12px"}}
+            onClick={()=>setAddSt(v=>!v)}>
+            {addSt?"✕ キャンセル":"＋ スタッフ追加"}
+          </button>
+          <button style={{fontSize:10,padding:"6px 10px",borderRadius:7,border:"1px solid #fca5a5",
+            background:"#fff5f5",color:"#dc2626",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}
+            onClick={async ()=>{
+              if(window.confirm("⚠️ スタッフデータを初期データにリセットします。\nシフト・有給・設定もすべて消えます。よろしいですか？")){
+                const keys=["ds_staff","ds_shifts","ds_wishes","ds_minSt","ds_wh","ds_whSat",
+                 "ds_extraKyosei","ds_deletedKyosei","ds_clinicHolidays","ds_seminars"];
+                keys.forEach(k=>localStorage.removeItem(k));
+                // Supabaseからも削除
+                await Promise.all(keys.map(k=>
+                  fetch(`${SB_URL}/rest/v1/app_data?key=eq.${k}`,{
+                    method:"DELETE",
+                    headers:{apikey:SB_KEY,Authorization:`Bearer ${SB_KEY}`}
+                  })
+                ));
+                window.location.reload();
+              }
+            }}>🗑 データリセット</button>
+        </div>
       </div>
       {addSt&&(
         <div className="aform">
@@ -2242,6 +2324,8 @@ export default function App() {
             ))}
           </nav>
           <div className="hr">
+            {!staffSynced&&<span style={{fontSize:9,color:"rgba(255,255,255,.5)",animation:"pulse 1s infinite"}}>☁ 同期中…</span>}
+            {staffSynced&&<span style={{fontSize:9,color:"rgba(255,255,255,.4)"}}>☁ 保存済</span>}
             {isA&&alerts.length>0&&<span className="halert red" onClick={()=>setTab("shift")}>⚠ 不足{alerts.length}件</span>}
             {isA&&overAlerts.length>0&&<span className="halert ora" onClick={()=>setTab("flex")}>🕐 超過{overAlerts.length}名</span>}
             <span style={{color:"rgba(255,255,255,.6)",fontSize:11}}>{user.name}</span>
