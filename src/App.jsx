@@ -429,8 +429,9 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--txt)
 
 /* role header */
 .rhr td{background:#f1f5f9!important;padding:2px 4px;font-size:9px;font-weight:900;
-  color:var(--mut);letter-spacing:.4px;border-bottom:1px solid var(--bdr);}
-.rhr td:first-child{position:sticky;left:0;padding:4px 11px;z-index:2;}
+  color:var(--mut);letter-spacing:.4px;border-bottom:1px solid var(--bdr);
+  vertical-align:middle;text-align:center;}
+.rhr td:first-child{position:sticky;left:0;padding:4px 11px;z-index:2;text-align:left;}
 /* count row */
 .crow td{background:#f8fafc!important;font-size:9px;}
 .crow td.sn{font-size:9px;color:var(--mut);font-weight:800;}
@@ -1225,15 +1226,18 @@ export default function App() {
                       if(hol||dow===0) cls="td-hol";
                       else if(kiValid) cls="td-k";
                       else if(dow===6) cls="td-sat";
+                      const isSunOrHol = hol || dow === 0;
+                      const isRed = dow === 0 || hol;
+                      const isSat = dow === 6;
                       return (
                         <td key={`${y}-${m}-${d}`} className={cls}
-                          style={{...(isNewMonth?{borderLeft:"2px solid #f59e0b"}:{}),
-                            padding:"2px 0",verticalAlign:"middle",textAlign:"center",
-                          }}
+                          style={{...(isNewMonth?{borderLeft:"2px solid #f59e0b"}:{})}}
                           ref={el=>{if(el)el.style.setProperty("background",
-                            hol||dow===0?"#fef2f2":kiValid?"#d1fae5":dow===6?"#dbeafe":rv.bg+"55","important")}}>
-                          <div style={{fontSize:11,fontWeight:800,color:hol||dow===0?"#9ca3af":"#374151",lineHeight:1.2}}>{d}</div>
-                          <div style={{fontSize:8,fontWeight:600,color:hol||dow===0?"#c4b5b5":"#94a3b8",lineHeight:1}}>{DAYS_JP[dow]}</div>
+                            isSunOrHol?"#fff5f5":isSat?"#eff6ff":"#ffffff","important")}}>
+                          <div style={{fontSize:11,fontWeight:800,lineHeight:1.2,
+                            color:isRed?"#dc2626":isSat?"#2563eb":"#111827"}}>{d}</div>
+                          <div style={{fontSize:8,fontWeight:600,lineHeight:1,
+                            color:isRed?"#ef4444":isSat?"#60a5fa":"#6b7280"}}>{DAYS_JP[dow]}</div>
                         </td>
                       );
                     })}
