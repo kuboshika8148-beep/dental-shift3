@@ -128,16 +128,11 @@ function dailyH(wh) {
 // ═══════════════════════════════════════════════════════
 // AUTO SCHEDULER
 // ═══════════════════════════════════════════════════════
-function autoSchedule(y,m,staff,minStaff) {
+function autoSchedule(y,m,staff,minStaff,kyoseiAssignedManual={},kyoseiRestManual={}) {
   const total=dim(y,m);
   const shifts={};
   const weekWork={};
   const workCount={};
-  // 矯正ローテーション: 対象スタッフをkyoseiOrderでソート
-  const kyoseiStaff=staff.filter(s=>KYOSEI_ROLES.has(s.role)&&s.kyoseiOrder!=null)
-    .sort((a,b)=>a.kyoseiOrder-b.kyoseiOrder);
-  // 矯正日ごとに担当を1人ずつ割り当てるカウンター
-  let kyoseiRotIdx=0;
 
   staff.forEach(s=>{ weekWork[s.id]={}; workCount[s.id]=0; });
 
@@ -148,14 +143,20 @@ function autoSchedule(y,m,staff,minStaff) {
     if(ki) kyoseiDays[d]=ki;
   }
 
-  // 矯正日ごとに担当を1名アサイン (ローテーション)
-  const kyoseiAssigned={}; // day -> staffId
+  // 矯正当番：手動設定があればそれを優先、なければkyoseiOrderでローテーション
+  const kyoseiStaff=staff.filter(s=>KYOSEI_ROLES.has(s.role)&&s.kyoseiOrder!=null)
+    .sort((a,b)=>a.kyoseiOrder-b.kyoseiOrder);
+  let kyoseiRotIdx=0;
+  const kyoseiAssigned={};
   Object.keys(kyoseiDays).forEach(ds=>{
     const d=Number(ds);
-    // 有給・休みのスタッフを除く有効なローテーション候補
-    const candidate=kyoseiStaff[kyoseiRotIdx % kyoseiStaff.length];
-    kyoseiAssigned[d]=candidate.id;
-    kyoseiRotIdx++;
+    if(kyoseiAssignedManual[d]){
+      // 手動設定済み → そのまま使う
+      kyoseiAssigned[d]=kyoseiAssignedManual[d];
+    } else if(kyoseiStaff.length>0){
+      kyoseiAssigned[d]=kyoseiStaff[kyoseiRotIdx%kyoseiStaff.length].id;
+      kyoseiRotIdx++;
+    }
   });
 
   for(let d=1;d<=total;d++){
@@ -205,14 +206,17 @@ function autoSchedule(y,m,staff,minStaff) {
 
         // 矯正日の処理
         if(ki){
-          if(!needRest||assigned<req){
-            if(kyoseiAssigned[d]===s.id){
-              // 当番者
-              shifts[`${s.id}_${d}`]=ki.type==="土"?"矯正当番_土":"矯正当番_木";
-            } else {
-              // 非当番: Dr は通常出勤、その他は休み
-              shifts[`${s.id}_${d}`]= role==="Dr" ? "出勤" : "休み";
-            }
+          if(kyoseiAssigned[d]===s.id){
+            // 手動設定当番 → 矯正当番シフト
+            shifts[`${s.id}_${d}`]=ki.type==="土"?"矯正当番_土":"矯正当番_木";
+            workCount[s.id]=(workCount[s.id]||0)+1;
+            weekWork[s.id][wk]=(weekWork[s.id][wk]||0)+1;
+            assigned++;
+          } else if(kyoseiRestManual[s.id]?.has(d)){
+            // 手動で休みに設定済み → 休みを維持
+            shifts[`${s.id}_${d}`]="休み";
+          } else if(!needRest||assigned<req){
+            shifts[`${s.id}_${d}`]=role==="Dr"?"出勤":"休み";
             workCount[s.id]=(workCount[s.id]||0)+1;
             weekWork[s.id][wk]=(weekWork[s.id][wk]||0)+1;
             assigned++;
@@ -866,7 +870,20 @@ export default function App() {
   }
 
   function handleAuto(){
-    const s=autoSchedule(year,month,staff.filter(s=>s.active),minSt);
+    // 矯正当番タブで手動設定済みの当番・休み情報を保持
+    const kyoseiAssignedManual={};
+    const kyoseiRestManual={};   // staffId -> Set of days (休み)
+    staff.filter(s=>s.active).forEach(s=>{
+      for(let d=1;d<=D;d++){
+        const sh=shifts[`${s.id}_${d}`];
+        if(sh==="矯正当番_土"||sh==="矯正当番_木") kyoseiAssignedManual[d]=s.id;
+        if(sh==="休み"){
+          if(!kyoseiRestManual[s.id]) kyoseiRestManual[s.id]=new Set();
+          kyoseiRestManual[s.id].add(d);
+        }
+      }
+    });
+    const s=autoSchedule(year,month,staff.filter(s=>s.active),minSt,kyoseiAssignedManual,kyoseiRestManual);
     setShifts(s);
     toast_("✨ シフトを自動作成しました");
   }
