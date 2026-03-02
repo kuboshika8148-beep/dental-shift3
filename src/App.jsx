@@ -804,7 +804,7 @@ export default function App() {
   const [clinicHolidays, setClinicHolidays] = useDB("ds_clinicHolidays", []);
   const [seminars, setSeminars] = useDB("ds_seminars", []);
   const [semModal, setSemModal] = useState(null);
-  const [calStart, setCalStart] = useDB("ds_calStart", 1); // 1 or 11
+  const [calStart, setCalStart] = useDB("ds_calStart", 11); // 1 or 11
 
   // ポップアップ外クリックで閉じる
   useEffect(()=>{
@@ -953,7 +953,7 @@ export default function App() {
     return (
       <div>
         <div className="ph">
-          <div className="ptitle">シフト表 <small>{year}年{month+1}月</small></div>
+          <div className="ptitle">シフト表 <small>{calStart===11?`${year}年${month+1}月11日〜${month===11?year+1:year}年${month===11?1:month+2}月10日`:`${year}年${month+1}月`}</small></div>
           <div style={{display:"flex",gap:7,alignItems:"center",flexWrap:"wrap"}}>
             <div className="mnav">
               <button onClick={()=>{if(month===0){setMonth(11);setYear(y=>y-1);}else setMonth(m=>m-1);}}>‹</button>
@@ -963,7 +963,7 @@ export default function App() {
             {isA&&<button className="pbtn" style={{background:"#7e22ce",color:"#fff"}} onClick={()=>setSemModal("add")}>🎓 セミナー追加</button>}
             {isA&&<button className="pbtn" style={{background:calStart===11?"#f59e0b":"#e2e8f0",color:calStart===11?"#fff":"#374151"}}
               onClick={()=>setCalStart(c=>c===1?11:1)}>
-              {calStart===11?"11〜10日表示":"1〜末日表示"}
+              {calStart===11?"📅 11〜10日表示中":"📅 1〜末日表示中"}
             </button>}
             {isA&&<button className="pbtn" onClick={()=>window.print()}>🖨 印刷</button>}
           </div>
@@ -1228,13 +1228,12 @@ export default function App() {
                       return (
                         <td key={`${y}-${m}-${d}`} className={cls}
                           style={{...(isNewMonth?{borderLeft:"2px solid #f59e0b"}:{}),
-                            padding:"1px 0",verticalAlign:"middle",textAlign:"center",
-                            background:hol||dow===0?"#fef2f2 !important":kiValid?"#d1fae5":dow===6?"#dbeafe":rv.bg+"55",
-                            // !importantをインラインで強制上書き
+                            padding:"2px 0",verticalAlign:"middle",textAlign:"center",
                           }}
                           ref={el=>{if(el)el.style.setProperty("background",
                             hol||dow===0?"#fef2f2":kiValid?"#d1fae5":dow===6?"#dbeafe":rv.bg+"55","important")}}>
-                          <span style={{fontSize:8,fontWeight:700,color:hol||dow===0?"#9ca3af":rv.color}}>{d}</span>
+                          <div style={{fontSize:11,fontWeight:800,color:hol||dow===0?"#9ca3af":rv.color,lineHeight:1.2}}>{d}</div>
+                          <div style={{fontSize:8,fontWeight:600,color:hol||dow===0?"#c4b5b5":rv.color+"aa",lineHeight:1}}>{DAYS_JP[dow]}</div>
                         </td>
                       );
                     })}
