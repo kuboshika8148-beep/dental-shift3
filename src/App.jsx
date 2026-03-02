@@ -737,6 +737,9 @@ export default function App() {
   const [kotDrag, setKotDrag] = useState(false);
   const [rdPop,   setRdPop]   = useState(null);
   const [kyoseiAddId, setKyoseiAddId] = useState("");
+  const [extraKyosei,   setExtraKyosei]   = useState([]);
+  const [deletedKyosei, setDeletedKyosei] = useState([]);
+  const [clinicHolidays, setClinicHolidays] = useState([]); // [{date:"YYYY-MM-DD", label:"お盆休み"}]
   const [seminars, setSeminars] = useState([]); // [{id, name, date, start, end, staffIds:[]}]
   const [semModal, setSemModal] = useState(null); // null | "add" | seminar.id
 
@@ -755,15 +758,33 @@ export default function App() {
 
   function toast_(msg){ setToast(msg); setTimeout(()=>setToast(null),2500); }
 
-  // 矯正日一覧 (this month)
+  // 医院休診日チェック（祝日 or 医院独自休診）
+  function isClinicHoliday(y,m,d){
+    if(isHoliday(y,m,d)) return true;
+    const key=`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+    return clinicHolidays.some(h=>h.date===key);
+  }
+  function clinicHolidayLabel(y,m,d){
+    const key=`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+    const ch=clinicHolidays.find(h=>h.date===key);
+    return ch?.label||null;
+  }
+
+  // 矯正日一覧 (this month) - カスタム追加・削除を反映
   const kyoseiDays=useMemo(()=>{
     const map={};
     for(let d=1;d<=D;d++){
+      const key=`${year}-${month}-${d}`;
+      if(deletedKyosei.includes(key)) continue; // 削除済みはスキップ
       const ki=kyoseiInfo(year,month,d);
       if(ki) map[d]=ki;
     }
+    // 追加分
+    extraKyosei.filter(k=>k.year===year&&k.month===month).forEach(k=>{
+      map[k.day]={type:k.type, label:k.label};
+    });
     return map;
-  },[year,month,D]);
+  },[year,month,D,extraKyosei,deletedKyosei]);
 
   function applyShift(sid,day,type){
     const key=`${sid}_${day}`;
@@ -827,7 +848,7 @@ export default function App() {
     const res=[];
     for(let d=1;d<=D;d++){
       const dow=new Date(year,month,d).getDay();
-      if(dow===0||isHoliday(year,month,d)) continue;
+      if(dow===0||isClinicHoliday(year,month,d)) continue;
       Object.keys(ROLES).forEach(role=>{
         const req=minSt[role]||0;
         const cnt=dayCounts[d]?.[role]||0;
@@ -969,6 +990,63 @@ export default function App() {
                 </div>
               </div>
             </div>
+
+            {/* 医院休診日設定 */}
+            <div style={{marginTop:14,borderTop:"1px solid #f1f5f9",paddingTop:12}}>
+              <div style={{fontSize:11,fontWeight:800,color:"#b45309",marginBottom:8}}>🏥 医院休診日設定</div>
+              {/* 登録済み休診日 */}
+              <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8}}>
+                {clinicHolidays.length===0&&<span style={{fontSize:11,color:"var(--mut)"}}>登録なし</span>}
+                {clinicHolidays.sort((a,b)=>a.date.localeCompare(b.date)).map(h=>(
+                  <div key={h.date} style={{display:"flex",alignItems:"center",gap:4,
+                    background:"#fef3c7",border:"1.5px solid #fcd34d",borderRadius:7,padding:"3px 8px"}}>
+                    <span style={{fontSize:10,fontWeight:700,color:"#92400e"}}>{h.date.slice(5).replace("-","/")} {h.label}</span>
+                    <button onClick={()=>{setClinicHolidays(ps=>ps.filter(x=>x.date!==h.date));toast_("休診日を削除しました");}}
+                      style={{fontSize:9,padding:"0 4px",border:"none",background:"none",color:"#dc2626",cursor:"pointer",fontWeight:800}}>✕</button>
+                  </div>
+                ))}
+              </div>
+              {/* 追加フォーム */}
+              <div style={{display:"flex",gap:6,alignItems:"flex-end",flexWrap:"wrap"}}>
+                <div>
+                  <div style={{fontSize:9,fontWeight:700,color:"var(--mut)",marginBottom:2}}>日付</div>
+                  <input id="ch-date" type="date"
+                    style={{padding:"5px 8px",border:"1.5px solid #e2e8f0",borderRadius:6,fontSize:11,fontFamily:"inherit"}}/>
+                </div>
+                <div>
+                  <div style={{fontSize:9,fontWeight:700,color:"var(--mut)",marginBottom:2}}>名称（任意）</div>
+                  <input id="ch-label" placeholder="例：お盆休み"
+                    style={{width:110,padding:"5px 8px",border:"1.5px solid #e2e8f0",borderRadius:6,fontSize:11,fontFamily:"inherit"}}/>
+                </div>
+                <button className="svbtn" style={{fontSize:10,padding:"5px 12px"}}
+                  onClick={()=>{
+                    const date=document.getElementById("ch-date").value;
+                    const label=document.getElementById("ch-label").value||"休診";
+                    if(!date){toast_("日付を選択してください");return;}
+                    if(clinicHolidays.some(h=>h.date===date)){toast_("すでに登録されています");return;}
+                    setClinicHolidays(ps=>[...ps,{date,label}]);
+                    toast_(`${date} を休診日に登録しました`);
+                    document.getElementById("ch-date").value="";
+                    document.getElementById("ch-label").value="";
+                  }}>＋ 追加</button>
+                <button style={{fontSize:10,padding:"5px 10px",borderRadius:6,border:"1px solid #e2e8f0",
+                  background:"#f8fafc",color:"#64748b",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}
+                  onClick={()=>{
+                    // お盆・年末年始を一括登録
+                    const y=year;
+                    const presets=[
+                      {date:`${y}-08-13`,label:"お盆休み"},{date:`${y}-08-14`,label:"お盆休み"},
+                      {date:`${y}-08-15`,label:"お盆休み"},{date:`${y}-08-16`,label:"お盆休み"},
+                      {date:`${y}-12-29`,label:"年末休み"},{date:`${y}-12-30`,label:"年末休み"},
+                      {date:`${y}-12-31`,label:"年末休み"},{date:`${y+1}-01-01`,label:"元旦"},
+                      {date:`${y+1}-01-02`,label:"年始休み"},{date:`${y+1}-01-03`,label:"年始休み"},
+                    ];
+                    const newOnes=presets.filter(p=>!clinicHolidays.some(h=>h.date===p.date));
+                    setClinicHolidays(ps=>[...ps,...newOnes]);
+                    toast_(`お盆・年末年始（${newOnes.length}日）を登録しました`);
+                  }}>📅 お盆・年末年始を一括登録</button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -1019,7 +1097,8 @@ export default function App() {
                 <th className="sc">スタッフ</th>
                 {days.map(d=>{
                   const dow=new Date(year,month,d).getDay();
-                  const hol=isHoliday(year,month,d);
+                  const hol=isClinicHoliday(year,month,d);
+                  const holLabel=clinicHolidayLabel(year,month,d);
                   const ki=kyoseiDays[d];
                   const isTd=d===today.getDate()&&month===today.getMonth()&&year===today.getFullYear();
                   let cls="";
@@ -1031,7 +1110,8 @@ export default function App() {
                     <th key={d} className={cls}>
                       <span className={isTd?"today-mark":""}>{d}</span>
                       <div style={{fontSize:8,fontWeight:500}}>{DAYS_JP[dow]}</div>
-                      {hol&&<div style={{fontSize:7,color:"#b45309",fontWeight:800}}>祝</div>}
+                      {holLabel?<div style={{fontSize:7,color:"#b45309",fontWeight:800,maxWidth:28,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={holLabel}>休</div>
+                       :hol&&<div style={{fontSize:7,color:"#b45309",fontWeight:800}}>祝</div>}
                       {ki&&!hol&&<span className="k-mark">矯正</span>}
                       {ki&&!hol&&<span className="k-sub">{ki.label}</span>}
                     </th>
@@ -1060,7 +1140,7 @@ export default function App() {
                       </td>
                       {days.map(d=>{
                         const dow=new Date(year,month,d).getDay();
-                        const hol=isHoliday(year,month,d);
+                        const hol=isClinicHoliday(year,month,d);
                         const ki=kyoseiDays[d];
                         const sh=shifts[`${s.id}_${d}`];
                         const ws=wishes[`${s.id}_${d}`];
@@ -1106,7 +1186,7 @@ export default function App() {
                       <td className="sn" style={{color:rv.color,fontWeight:800}}>人数({rv.short})</td>
                       {days.map(d=>{
                         const dow=new Date(year,month,d).getDay();
-                        const hol=isHoliday(year,month,d);
+                        const hol=isClinicHoliday(year,month,d);
                         if(dow===0||hol) return <td key={d}/>;
                         const cnt=dayCounts[d]?.[role]||0;
                         const req=minSt[role]||0;
@@ -1230,7 +1310,83 @@ export default function App() {
       <div>
         <div className="ph"><div className="ptitle">矯正当番 ローテーション</div></div>
 
-        {/* 今月の当番スケジュール */}
+        {/* 矯正日管理 */}
+        <div className="krot-wrap" style={{marginBottom:14}}>
+          <div className="cpt">📆 矯正日管理（{year}年{month+1}月）</div>
+          <div style={{fontSize:11,color:"var(--mut)",marginBottom:10}}>
+            デフォルトは第2土曜・第4木曜。イレギュラーで追加・削除できます。
+          </div>
+
+          {/* 今月の矯正日一覧 */}
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+            {Object.entries(kyoseiDays).sort((a,b)=>Number(a[0])-Number(b[0])).map(([d,ki])=>{
+              const dateKey=`${year}-${month}-${d}`;
+              const isExtra=extraKyosei.some(k=>k.year===year&&k.month===month&&k.day===Number(d));
+              return (
+                <div key={d} style={{display:"flex",alignItems:"center",gap:5,
+                  background:isExtra?"#fdf4ff":"#f0fdfa",
+                  border:`1.5px solid ${isExtra?"#d8b4fe":"#6ee7b7"}`,
+                  borderRadius:8,padding:"5px 10px"}}>
+                  <span style={{fontSize:11,fontWeight:800,color:isExtra?"#7e22ce":"#065f46"}}>
+                    {month+1}/{d}（{ki.label}）
+                  </span>
+                  {isExtra&&<span style={{fontSize:8,background:"#ede9fe",color:"#7e22ce",padding:"1px 5px",borderRadius:4,fontWeight:800}}>追加</span>}
+                  <button style={{fontSize:9,padding:"1px 6px",borderRadius:4,border:"1px solid #fca5a5",
+                    background:"#fff",color:"#dc2626",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}
+                    onClick={()=>{
+                      if(isExtra){
+                        setExtraKyosei(ps=>ps.filter(k=>!(k.year===year&&k.month===month&&k.day===Number(d))));
+                      } else {
+                        setDeletedKyosei(ps=>[...ps,`${year}-${month}-${d}`]);
+                      }
+                      toast_(`${month+1}/${d} の矯正日を削除しました`);
+                    }}>✕</button>
+                </div>
+              );
+            })}
+            {Object.keys(kyoseiDays).length===0&&(
+              <div style={{fontSize:11,color:"var(--mut)"}}>今月の矯正日はありません</div>
+            )}
+          </div>
+
+          {/* 矯正日追加フォーム */}
+          <div style={{display:"flex",gap:8,alignItems:"flex-end",flexWrap:"wrap",
+            background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:8,padding:"10px 12px"}}>
+            <div>
+              <div style={{fontSize:9,fontWeight:700,color:"var(--mut)",marginBottom:3}}>日付</div>
+              <input id="kyosei-add-day" type="number" min="1" max="31" placeholder="例: 15"
+                style={{width:70,padding:"6px 8px",border:"1.5px solid #e2e8f0",borderRadius:6,fontSize:12,fontFamily:"inherit"}}/>
+            </div>
+            <div>
+              <div style={{fontSize:9,fontWeight:700,color:"var(--mut)",marginBottom:3}}>種別</div>
+              <select id="kyosei-add-type"
+                style={{padding:"6px 8px",border:"1.5px solid #e2e8f0",borderRadius:6,fontSize:12,fontFamily:"inherit"}}>
+                <option value="土">土曜矯正（14:00〜17:30）</option>
+                <option value="木">木曜矯正（14:00〜18:30）</option>
+              </select>
+            </div>
+            <div>
+              <div style={{fontSize:9,fontWeight:700,color:"var(--mut)",marginBottom:3}}>ラベル</div>
+              <input id="kyosei-add-label" placeholder="例: 第3土" defaultValue=""
+                style={{width:80,padding:"6px 8px",border:"1.5px solid #e2e8f0",borderRadius:6,fontSize:12,fontFamily:"inherit"}}/>
+            </div>
+            <button className="svbtn" style={{fontSize:11}}
+              onClick={()=>{
+                const day=Number(document.getElementById("kyosei-add-day").value);
+                const type=document.getElementById("kyosei-add-type").value;
+                const label=document.getElementById("kyosei-add-label").value||`${month+1}/${day}`;
+                if(!day||day<1||day>31){toast_("日付を入力してください");return;}
+                // すでに存在する場合は削除リストから外す
+                const dateKey=`${year}-${month}-${day}`;
+                setDeletedKyosei(ps=>ps.filter(k=>k!==dateKey));
+                setExtraKyosei(ps=>[...ps.filter(k=>!(k.year===year&&k.month===month&&k.day===day)),
+                  {year,month,day,type,label}]);
+                toast_(`${month+1}/${day} を矯正日に追加しました`);
+                document.getElementById("kyosei-add-day").value="";
+                document.getElementById("kyosei-add-label").value="";
+              }}>＋ 追加</button>
+          </div>
+        </div>
         <div className="krot-wrap" style={{marginBottom:16}}>
           <div className="cpt">📅 {year}年{month+1}月 矯正当番スケジュール</div>
           <div className="mnav" style={{display:"inline-flex",marginBottom:12}}>
@@ -1316,11 +1472,91 @@ export default function App() {
             </div>
           )}
         </div>
+
+        {/* 矯正日 休み入力→残り出勤 */}
+        {schedule.length>0&&(
+          <div className="krot-wrap" style={{marginTop:14}}>
+            <div className="cpt">😴 矯正日の休み入力 → 残り全員出勤</div>
+            <div style={{fontSize:11,color:"var(--mut)",marginBottom:12}}>
+              矯正日ごとに休む人を選んで「適用」すると、それ以外の全員が出勤になります。<br/>
+              当番者は矯正当番シフト、DrはDr出勤、その他は通常出勤になります。
+            </div>
+            {schedule.map(({day,ki,staff:tban})=>{
+              const allActive=staff.filter(s=>s.active);
+              const dow=new Date(year,month,day).getDay();
+              // 現在の休みスタッフ
+              const currentRest=allActive.filter(s=>shifts[`${s.id}_${day}`]==="休み").map(s=>s.id);
+              return (
+                <div key={day} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"12px 14px",marginBottom:10}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                    <span style={{fontWeight:800,fontSize:12,color:"#065f46"}}>
+                      {month+1}/{day}（{ki.label}）
+                    </span>
+                    <span style={{fontSize:10,color:"#047857"}}>{ki.type==="土"?"14:00〜17:30":"14:00〜18:30"}</span>
+                    {tban&&<span style={{fontSize:9,background:"#d1fae5",color:"#065f46",padding:"2px 7px",borderRadius:8,fontWeight:800}}>当番:{tban.name}</span>}
+                    <button className="svbtn" style={{marginLeft:"auto",fontSize:10,padding:"5px 12px"}}
+                      onClick={()=>{
+                        // 休みの人のIDセット
+                        const restIds=new Set(
+                          allActive.filter((s,_)=>{
+                            const btn=document.getElementById(`kyrest_${day}_${s.id}`);
+                            return btn?.dataset.on==="1";
+                          }).map(s=>s.id)
+                        );
+                        setShifts(prev=>{
+                          const next={...prev};
+                          allActive.forEach(s=>{
+                            const key=`${s.id}_${day}`;
+                            if(restIds.has(s.id)){
+                              next[key]="休み";
+                            } else if(s.id===tban?.id){
+                              next[key]=ki.type==="土"?"矯正当番_土":"矯正当番_木";
+                            } else if(s.role==="Dr"){
+                              next[key]=dow===6?"土曜出勤":"出勤";
+                            } else {
+                              next[key]=dow===6?"土曜出勤":"出勤";
+                            }
+                          });
+                          return next;
+                        });
+                        toast_(`${month+1}/${day} のシフトを適用しました`);
+                      }}>✅ 適用</button>
+                  </div>
+                  <div style={{fontSize:9,color:"var(--mut)",fontWeight:700,marginBottom:6}}>休む人をタップ（青=休み）</div>
+                  <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                    {allActive.map(s=>{
+                      const rv=ROLES[s.role];
+                      const isRest=currentRest.includes(s.id);
+                      return (
+                        <button key={s.id} id={`kyrest_${day}_${s.id}`}
+                          data-on={isRest?"1":"0"}
+                          type="button"
+                          style={{padding:"4px 9px",borderRadius:6,
+                            border:`1.5px solid ${isRest?"#0f4c8a":"#e2e8f0"}`,
+                            background:isRest?"#0f4c8a":"#f8fafc",
+                            color:isRest?"#fff":"#374151",
+                            fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}
+                          onClick={e=>{
+                            const on=e.currentTarget.dataset.on==="1";
+                            e.currentTarget.dataset.on=on?"0":"1";
+                            e.currentTarget.style.background=on?"#f8fafc":"#0f4c8a";
+                            e.currentTarget.style.color=on?"#374151":"#fff";
+                            e.currentTarget.style.borderColor=on?"#e2e8f0":"#0f4c8a";
+                          }}>
+                          <span style={{fontSize:8,marginRight:3,background:rv.bg,color:rv.color,padding:"0 3px",borderRadius:3,fontWeight:800}}>{s.role}</span>
+                          {s.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     );
   };
-
-  // ── PAID TAB ───────────────────────────────
   const PaidTab=()=>{
     const vs=isA?staff.filter(s=>s.active):[mySt].filter(Boolean);
     return (
@@ -1407,7 +1643,7 @@ export default function App() {
                   <th className="sc">スタッフ</th>
                   {days.map(d=>{
                     const dow=new Date(year,month,d).getDay();
-                    const hol=isHoliday(year,month,d);
+                    const hol=isClinicHoliday(year,month,d);
                     const ki=kyoseiDays[d];
                     let cls=hol||dow===0?"th-hol":ki?"th-k2sat":dow===6?"th-sat":"";
                     return <th key={d} className={cls}>{d}<br/><span style={{fontSize:8}}>{DAYS_JP[dow]}</span>{ki&&!hol&&<span className="k-mark">矯</span>}</th>;
@@ -1457,7 +1693,7 @@ export default function App() {
             {cells.map((d,i)=>{
               if(d===null) return <div key={`e${i}`} className="wdc emp"/>;
               const dow=new Date(year,month,d).getDay();
-              const hol=isHoliday(year,month,d);
+              const hol=isClinicHoliday(year,month,d);
               const ki=kyoseiDays[d];
               const ws=wishes[`${sid}_${d}`];
               const st=SHIFT_TYPES[ws];
@@ -2093,7 +2329,7 @@ export default function App() {
               <h3>{modal.staffName}</h3>
               <p>
                 {year}年{month+1}月{modal.day}日（{DAYS_JP[new Date(year,month,modal.day).getDay()]}）
-                {isHoliday(year,month,modal.day)&&" 🎌祝日"}
+                {isClinicHoliday(year,month,modal.day)&&" 🎌祝日"}
                 {kyoseiDays[modal.day]&&` 🦷${kyoseiDays[modal.day].label}矯正日`}
               </p>
               <div className="mbtns">
