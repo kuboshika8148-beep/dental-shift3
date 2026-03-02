@@ -22,11 +22,12 @@ const KYOSEI_ROLES = new Set(["Dh","Da","受付","TC"]);
 // 矯正(土): 8:55〜12:30+14:00〜17:30 = 7h05m
 // 矯正(木): 8:55〜12:30+14:00〜18:30 = 8h05m
 const SHIFT_TYPES = {
-  出勤:        { label:"出勤",         color:"#1d4ed8", bg:"#dbeafe",  hours:8.25 }, // 8:45-18:30 休90分
-  土曜出勤:    { label:"土曜出勤",     color:"#0369a1", bg:"#e0f2fe",  hours:6.25 }, // 8:45-15:30 休30分
-  第2土曜出勤: { label:"第2土曜",      color:"#6d28d9", bg:"#ede9fe",  hours:6.25 }, // 8:45-15:30 休30分
-  矯正当番_土:  { label:"矯正当番(土)", color:"#0f766e", bg:"#ccfbf1",  hours:5.5  }, // 8:45-12:30+14:00-17:30
-  矯正当番_木:  { label:"矯正当番(木)", color:"#065f46", bg:"#a7f3d0",  hours:6.5  }, // 8:45-12:30+14:00-18:30
+  出勤:        { label:"出勤",         color:"#1d4ed8", bg:"#dbeafe",  hours:8.25 },
+  訪問:        { label:"訪問",         color:"#7c3aed", bg:"#ede9fe",  hours:8.25 },
+  土曜出勤:    { label:"土曜出勤",     color:"#0369a1", bg:"#e0f2fe",  hours:6.25 },
+  第2土曜出勤: { label:"第2土曜",      color:"#6d28d9", bg:"#ede9fe",  hours:6.25 },
+  矯正当番_土:  { label:"矯正当番(土)", color:"#0f766e", bg:"#ccfbf1",  hours:5.5  },
+  矯正当番_木:  { label:"矯正当番(木)", color:"#065f46", bg:"#a7f3d0",  hours:6.5  },
   休み:       { label:"休み",         color:"#9ca3af", bg:"#f3f4f6",  hours:0    },
   有給:       { label:"有給",         color:"#d97706", bg:"#fef3c7",  hours:0    },
   午前半休:    { label:"午後出勤（午前休）",  color:"#c2410c", bg:"#ffedd5",  hours:4.125 },
@@ -764,6 +765,7 @@ function shiftLabel(key) {
   if(key==="矯正当番_土") return "矯土";
   if(key==="矯正当番_木") return "矯木";
   if(key==="土曜出勤")    return "土勤";
+  if(key==="訪問")        return "訪問";
   if(key==="午前のみ")    return "午前";
   if(key==="午前半休")    return "午後出";
   if(key==="午後半休")    return "午前出";
@@ -848,6 +850,11 @@ export default function App() {
   const [minSt,   setMinSt]   = useDB("ds_minSt",   DEFAULT_MIN);
   const [wh,      setWh]      = useDB("ds_wh",       DEFAULT_WH);
   const [whSat,   setWhSat]   = useDB("ds_whSat",    DEFAULT_WH_SAT);
+  // 矯正時間設定（デフォルト: 第2土曜午後14:00〜17:30、第4木曜午後14:00〜18:30）
+  const [kyoseiTime, setKyoseiTime] = useDB("ds_kyoseiTime", {
+    sat: { start:"14:00", end:"17:30" },
+    thu: { start:"14:00", end:"18:30" },
+  });
   const [toast,   setToast]   = useState(null);
   const [modal,   setModal]   = useState(null);
   const [wModal,  setWModal]  = useState(null);
@@ -861,6 +868,8 @@ export default function App() {
   const [clinicHolidays, setClinicHolidays] = useDB("ds_clinicHolidays", []);
   const [seminars, setSeminars] = useDB("ds_seminars", []);
   const [semModal, setSemModal] = useState(null);
+  const [visits, setVisits] = useDB("ds_visits", []);
+  const [visitModal, setVisitModal] = useState(null);
   const [calStart, setCalStart] = useDB("ds_calStart", 11); // 1 or 11
 
   // ポップアップ外クリックで閉じる
@@ -1037,6 +1046,7 @@ export default function App() {
               <button onClick={()=>{if(month===11){setMonth(0);setYear(y=>y+1);}else setMonth(m=>m+1);}}>›</button>
             </div>
             {isA&&<button className="pbtn" style={{background:"#7e22ce",color:"#fff"}} onClick={()=>setSemModal("add")}>🎓 セミナー追加</button>}
+            {isA&&<button className="pbtn" style={{background:"#0369a1",color:"#fff"}} onClick={()=>setVisitModal("add")}>🏠 訪問追加</button>}
             {isA&&<button className="pbtn" style={{background:calStart===11?"#f59e0b":"#e2e8f0",color:calStart===11?"#fff":"#374151"}}
               onClick={()=>setCalStart(c=>c===1?11:1)}>
               {calStart===11?"📅 11〜10日表示中":"📅 1〜末日表示中"}
@@ -1074,6 +1084,41 @@ export default function App() {
           );
         })}
 
+        {/* 訪問バナー（今月分） */}
+        {visits.filter(v=>{
+          const vd=new Date(v.date);
+          return vd.getFullYear()===year&&vd.getMonth()===month;
+        }).sort((a,b)=>new Date(a.date)-new Date(b.date)).map(v=>{
+          const d=new Date(v.date).getDate();
+          const dow=DAYS_JP[new Date(v.date).getDay()];
+          const participants=staff.filter(s=>v.staffIds.includes(s.id));
+          const hrs=v.start&&v.end?(()=>{
+            const [sh,sm]=v.start.split(":").map(Number);
+            const [eh,em]=v.end.split(":").map(Number);
+            const mins=(eh*60+em)-(sh*60+sm)-(v.breakMin||0);
+            return Math.round(mins/60*10)/10;
+          })():null;
+          return (
+            <div key={v.id} className="sem-banner" style={{borderColor:"#7dd3fc",background:"#f0f9ff"}}>
+              <div className="sem-banner sh">
+                <span style={{fontSize:16}}>🏠</span>
+                <span className="sem-banner sn" style={{color:"#0369a1"}}>{v.name||"訪問"}</span>
+                <span className="sem-banner st">{month+1}/{d}（{dow}）{v.start}〜{v.end}{hrs?` (${hrs}h)`:""}</span>
+                {isA&&<button style={{marginLeft:"auto",fontSize:9,padding:"2px 8px",borderRadius:5,border:"1px solid #7dd3fc",background:"#fff",color:"#0369a1",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}
+                  onClick={()=>setVisitModal(v.id)}>編集</button>}
+                {isA&&<button style={{fontSize:9,padding:"2px 8px",borderRadius:5,border:"1px solid #fca5a5",background:"#fff",color:"#dc2626",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}
+                  onClick={()=>{if(window.confirm(`「${v.name||"訪問"}」を削除しますか？`)){setVisits(ps=>ps.filter(x=>x.id!==v.id));}}}>削除</button>}
+              </div>
+              <div className="sem-banner sp">
+                <span style={{fontSize:9,color:"#0369a1",fontWeight:700,marginRight:2}}>参加：</span>
+                {participants.map(s=>(
+                  <span key={s.id} className="sem-badge" style={{borderColor:"#7dd3fc",color:"#0369a1"}}>{s.name}</span>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+
         {/* 矯正日インフォ */}
         {Object.keys(kyoseiDays).length>0&&(
           <div className="kinfo">
@@ -1086,7 +1131,7 @@ export default function App() {
                 return (
                   <div className="kinfo-item" key={d}>
                     <strong>{month+1}/{d}（{ki.label}）</strong><br/>
-                    {ki.type==="土"?"14:00〜17:30":"14:00〜18:30"}
+                    {ki.type==="土"?`${kyoseiTime.sat.start}〜${kyoseiTime.sat.end}`:`${kyoseiTime.thu.start}〜${kyoseiTime.thu.end}`}
                     {tBan&&<span style={{marginLeft:6,fontSize:11,fontWeight:700,background:"#d1fae5",
                       color:"#065f46",padding:"1px 6px",borderRadius:8}}>当番: {tBan.name}</span>}
                   </div>
@@ -1337,6 +1382,10 @@ export default function App() {
                           const sd=new Date(sm.date);
                           return sd.getFullYear()===y&&sd.getMonth()===m&&sd.getDate()===d&&sm.staffIds.includes(s.id);
                         });
+                        const inVisit=!isOff&&visits.some(v=>{
+                          const vd=new Date(v.date);
+                          return vd.getFullYear()===y&&vd.getMonth()===m&&vd.getDate()===d&&v.staffIds.includes(s.id);
+                        });
                         const isNewMonth=calStart===11&&d===1;
                         let tdCls="";
                         if(isOff) tdCls="td-hol";
@@ -1345,15 +1394,17 @@ export default function App() {
                         return (
                           <td key={`${y}-${m}-${d}`} className={tdCls}
                             style={{...(inSeminar?{outline:"2px solid #d8b4fe",outlineOffset:"-2px",background:"#fdf4ff"}:{}),
+                              ...(inVisit&&!inSeminar?{outline:"2px solid #7dd3fc",outlineOffset:"-2px",background:"#f0f9ff"}:{}),
                               ...(isNewMonth?{borderLeft:"2px solid #f59e0b"}:{})}}>
                             {isOff ? (
-                              inSeminar ? <span className="sem-dot" style={{display:"block",margin:"auto"}}/> : null
+                              inSeminar ? <span className="sem-dot" style={{display:"block",margin:"auto"}}/> :
+                              inVisit ? <span style={{display:"block",width:6,height:6,borderRadius:"50%",background:"#0369a1",margin:"auto"}}/> : null
                             ) : sh?(
                               <button className="scl"
                                 style={{background:st?.bg||"#f3f4f6",color:st?.color||"#9ca3af"}}
                                 onClick={()=>isA&&setModal({staffId:s.id,day:d,month:m,year:y,staffName:s.name})}
-                                title={`${s.name} ${m+1}/${d} ${sh}${inSeminar?" 🎓セミナー参加":""}${ws?` (希望:${ws})`:""}`}>
-                                {shiftLabel(sh)}{inSeminar&&<span className="sem-dot"/>}
+                                title={`${s.name} ${m+1}/${d} ${sh}${inSeminar?" 🎓セミナー参加":""}${inVisit?" 🏠訪問":""}${ws?` (希望:${ws})`:""}`}>
+                                {shiftLabel(sh)}{inSeminar&&<span className="sem-dot"/>}{inVisit&&!inSeminar&&<span style={{display:"inline-block",width:5,height:5,borderRadius:"50%",background:"#0369a1",marginLeft:1,verticalAlign:"middle"}}/>}
                               </button>
                             ):(
                               <div className="scl-e"
@@ -1426,12 +1477,12 @@ export default function App() {
               <div style={{fontSize:9,color:"#94a3b8"}}>{whSat.start}〜{whSat.end}（休憩{whSat.breakMin}分）</div>
             </div>
             <div>
-              <div style={{fontSize:9,color:"var(--mut)",fontWeight:700,marginBottom:3}}>矯正当番(土) 8:45〜12:30+14:00〜17:30</div>
+              <div style={{fontSize:9,color:"var(--mut)",fontWeight:700,marginBottom:3}}>矯正当番(土) 8:45〜12:30+{kyoseiTime.sat.start}〜{kyoseiTime.sat.end}</div>
               <div style={{fontSize:20,fontWeight:900,fontFamily:"JetBrains Mono,monospace"}}>{SHIFT_TYPES["矯正当番_土"].hours}<small style={{fontSize:11,fontWeight:400}}> h</small></div>
               <div style={{fontSize:9,color:"#94a3b8"}}>午前3.75h + 午後3.5h（休憩除く）</div>
             </div>
             <div>
-              <div style={{fontSize:9,color:"var(--mut)",fontWeight:700,marginBottom:3}}>矯正当番(木) 8:45〜12:30+14:00〜18:30</div>
+              <div style={{fontSize:9,color:"var(--mut)",fontWeight:700,marginBottom:3}}>矯正当番(木) 8:45〜12:30+{kyoseiTime.thu.start}〜{kyoseiTime.thu.end}</div>
               <div style={{fontSize:20,fontWeight:900,fontFamily:"JetBrains Mono,monospace"}}>{SHIFT_TYPES["矯正当番_木"].hours}<small style={{fontSize:11,fontWeight:400}}> h</small></div>
               <div style={{fontSize:9,color:"#94a3b8"}}>午前3.75h + 午後4.5h（休憩除く）</div>
             </div>
@@ -1509,6 +1560,38 @@ export default function App() {
             デフォルトは第2土曜・第4木曜。イレギュラーで追加・削除できます。
           </div>
 
+          {/* 矯正時間設定 */}
+          <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:12,
+            background:"#f0fdfa",border:"1px solid #6ee7b7",borderRadius:8,padding:"10px 14px"}}>
+            <div style={{fontSize:10,fontWeight:800,color:"#065f46",width:"100%",marginBottom:4}}>🕑 矯正診療時間（デフォルト・変更可）</div>
+            {/* 第2土曜 */}
+            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+              <span style={{fontSize:11,fontWeight:700,color:"#0369a1",minWidth:80}}>第2土曜（午後）</span>
+              <div style={{display:"flex",alignItems:"center",gap:4}}>
+                <input type="time" value={kyoseiTime.sat.start}
+                  onChange={e=>setKyoseiTime(p=>({...p,sat:{...p.sat,start:e.target.value}}))}
+                  style={{padding:"4px 6px",border:"1.5px solid #7dd3fc",borderRadius:6,fontSize:12,fontFamily:"inherit"}}/>
+                <span style={{fontSize:11,color:"var(--mut)"}}>〜</span>
+                <input type="time" value={kyoseiTime.sat.end}
+                  onChange={e=>setKyoseiTime(p=>({...p,sat:{...p.sat,end:e.target.value}}))}
+                  style={{padding:"4px 6px",border:"1.5px solid #7dd3fc",borderRadius:6,fontSize:12,fontFamily:"inherit"}}/>
+              </div>
+            </div>
+            {/* 第4木曜 */}
+            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+              <span style={{fontSize:11,fontWeight:700,color:"#065f46",minWidth:80}}>第4木曜（午後）</span>
+              <div style={{display:"flex",alignItems:"center",gap:4}}>
+                <input type="time" value={kyoseiTime.thu.start}
+                  onChange={e=>setKyoseiTime(p=>({...p,thu:{...p.thu,start:e.target.value}}))}
+                  style={{padding:"4px 6px",border:"1.5px solid #6ee7b7",borderRadius:6,fontSize:12,fontFamily:"inherit"}}/>
+                <span style={{fontSize:11,color:"var(--mut)"}}>〜</span>
+                <input type="time" value={kyoseiTime.thu.end}
+                  onChange={e=>setKyoseiTime(p=>({...p,thu:{...p.thu,end:e.target.value}}))}
+                  style={{padding:"4px 6px",border:"1.5px solid #6ee7b7",borderRadius:6,fontSize:12,fontFamily:"inherit"}}/>
+              </div>
+            </div>
+          </div>
+
           {/* 今月の矯正日一覧 */}
           <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
             {Object.entries(kyoseiDays).sort((a,b)=>Number(a[0])-Number(b[0])).map(([d,ki])=>{
@@ -1552,8 +1635,8 @@ export default function App() {
               <div style={{fontSize:9,fontWeight:700,color:"var(--mut)",marginBottom:3}}>種別</div>
               <select id="kyosei-add-type"
                 style={{padding:"6px 8px",border:"1.5px solid #e2e8f0",borderRadius:6,fontSize:12,fontFamily:"inherit"}}>
-                <option value="土">土曜矯正（14:00〜17:30）</option>
-                <option value="木">木曜矯正（14:00〜18:30）</option>
+                <option value="土">土曜矯正（{kyoseiTime.sat.start}〜{kyoseiTime.sat.end}）</option>
+                <option value="木">木曜矯正（{kyoseiTime.thu.start}〜{kyoseiTime.thu.end}）</option>
               </select>
             </div>
             <div>
@@ -1863,7 +1946,7 @@ export default function App() {
             onClick={async ()=>{
               if(window.confirm("⚠️ スタッフデータを初期データにリセットします。\nシフト・有給・設定もすべて消えます。よろしいですか？")){
                 const keys=["ds_staff","ds_shifts","ds_wishes","ds_minSt","ds_wh","ds_whSat",
-                 "ds_extraKyosei","ds_deletedKyosei","ds_clinicHolidays","ds_seminars"];
+                 "ds_extraKyosei","ds_deletedKyosei","ds_clinicHolidays","ds_seminars","ds_visits","ds_kyoseiTime"];
                 keys.forEach(k=>localStorage.removeItem(k));
                 // Supabaseからも削除
                 await Promise.all(keys.map(k=>
@@ -2608,6 +2691,81 @@ export default function App() {
                 <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:4}}>
                   <button className="mcan" onClick={()=>setSemModal(null)}>キャンセル</button>
                   <button className="svbtn" onClick={save}>{isEdit?"更新":"追加"}</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* 訪問モーダル */}
+      {visitModal&&isA&&(()=>{
+        const isEdit=visitModal!=="add";
+        const existing=isEdit?visits.find(v=>v.id===visitModal):null;
+        const initDate=existing?.date||(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;})();
+        const save=()=>{
+          const fd=document.getElementById("visit-form");
+          const name=fd.querySelector("#visit-name").value.trim();
+          const date=fd.querySelector("#visit-date").value;
+          const start=fd.querySelector("#visit-start").value;
+          const end=fd.querySelector("#visit-end").value;
+          const breakMin=Number(fd.querySelector("#visit-break").value)||0;
+          const staffIds=[...fd.querySelectorAll(".visit-staff-btn.on")].map(b=>Number(b.dataset.id));
+          if(!date){toast_("日付を入力してください");return;}
+          if(staffIds.length===0){toast_("参加スタッフを選択してください");return;}
+          const entry={id:isEdit?visitModal:Date.now(),name:name||"訪問",date,start,end,breakMin,staffIds};
+          if(isEdit) setVisits(ps=>ps.map(v=>v.id===visitModal?entry:v));
+          else setVisits(ps=>[...ps,entry]);
+          toast_(isEdit?"訪問を更新しました":"訪問を追加しました");
+          setVisitModal(null);
+        };
+        return (
+          <div className="sem-modal-ov" onClick={()=>setVisitModal(null)}>
+            <div className="sem-modal" onClick={e=>e.stopPropagation()}>
+              <h3>🏠 {isEdit?"訪問編集":"訪問追加"}</h3>
+              <div className="sem-form" id="visit-form">
+                <div>
+                  <label>訪問名（任意）</label>
+                  <input id="visit-name" defaultValue={existing?.name||""} placeholder="例：○○老健"/>
+                </div>
+                <div className="sem-row">
+                  <div>
+                    <label>日付</label>
+                    <input id="visit-date" type="date" defaultValue={existing?.date||initDate}/>
+                  </div>
+                  <div>
+                    <label>開始時間</label>
+                    <input id="visit-start" type="time" defaultValue={existing?.start||"09:00"}/>
+                  </div>
+                  <div>
+                    <label>終了時間</label>
+                    <input id="visit-end" type="time" defaultValue={existing?.end||"16:00"}/>
+                  </div>
+                  <div>
+                    <label>休憩(分)</label>
+                    <input id="visit-break" type="number" min="0" max="120" step="15" defaultValue={existing?.breakMin||60} style={{width:60}}/>
+                  </div>
+                </div>
+                <div>
+                  <label>参加スタッフ（Dr・Dhのみ）</label>
+                  <div className="sem-staff-grid">
+                    {staff.filter(s=>s.active&&(s.role==="Dr"||s.role==="Dh")).map(s=>{
+                      const on=(existing?.staffIds||[]).includes(s.id);
+                      const rv=ROLES[s.role];
+                      return (
+                        <button key={s.id} type="button" data-id={s.id}
+                          className={`visit-staff-btn sem-staff-btn ${on?"on":""}`}
+                          onClick={e=>e.currentTarget.classList.toggle("on")}>
+                          <span style={{fontSize:8,marginRight:3,background:rv.bg,color:rv.color,padding:"0 3px",borderRadius:3,fontWeight:800}}>{s.role}</span>
+                          {s.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:4}}>
+                  <button className="mcan" onClick={()=>setVisitModal(null)}>キャンセル</button>
+                  <button className="svbtn" style={{background:"#0369a1"}} onClick={save}>{isEdit?"更新":"追加"}</button>
                 </div>
               </div>
             </div>
