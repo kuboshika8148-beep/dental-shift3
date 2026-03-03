@@ -22,16 +22,17 @@ const KYOSEI_ROLES = new Set(["Dh","Da","受付","TC"]);
 // 矯正(土): 8:55〜12:30+14:00〜17:30 = 7h05m
 // 矯正(木): 8:55〜12:30+14:00〜18:30 = 8h05m
 const SHIFT_TYPES = {
-  出勤:        { label:"出勤",         color:"#1d4ed8", bg:"#dbeafe",  hours:8.25 },
-  訪問:        { label:"訪問",         color:"#7c3aed", bg:"#ede9fe",  hours:8.25 },
-  土曜出勤:    { label:"土曜出勤",     color:"#0369a1", bg:"#e0f2fe",  hours:6.25 },
-  第2土曜出勤: { label:"第2土曜",      color:"#6d28d9", bg:"#ede9fe",  hours:6.25 },
-  矯正当番_土:  { label:"矯正当番(土)", color:"#0f766e", bg:"#ccfbf1",  hours:5.5  },
-  矯正当番_木:  { label:"矯正当番(木)", color:"#065f46", bg:"#a7f3d0",  hours:6.5  },
-  休み:       { label:"休み",         color:"#9ca3af", bg:"#f3f4f6",  hours:0    },
-  有給:       { label:"有給",         color:"#d97706", bg:"#fef3c7",  hours:0    },
-  午前半休:    { label:"午後出勤（午前休）",  color:"#c2410c", bg:"#ffedd5",  hours:4.125 },
-  午後半休:    { label:"午前出勤（午後休）",  color:"#a16207", bg:"#fef9c3",  hours:4.125 },
+  出勤:        { label:"出勤",              color:"#1d4ed8", bg:"#dbeafe",  hours:8.25 },
+  訪問:        { label:"訪問",              color:"#7c3aed", bg:"#ede9fe",  hours:8.25 },
+  AM_MT:       { label:"AMセミナー出勤",    color:"#0891b2", bg:"#cffafe",  hours:4.125 },
+  土曜出勤:    { label:"土曜出勤",          color:"#0369a1", bg:"#e0f2fe",  hours:6.25 },
+  第2土曜出勤: { label:"第2土曜",           color:"#6d28d9", bg:"#ede9fe",  hours:6.25 },
+  矯正当番_土:  { label:"矯正当番(土)",     color:"#0f766e", bg:"#ccfbf1",  hours:5.5  },
+  矯正当番_木:  { label:"矯正当番(木)",     color:"#065f46", bg:"#a7f3d0",  hours:6.5  },
+  休み:        { label:"休み",              color:"#9ca3af", bg:"#f3f4f6",  hours:0    },
+  有給:        { label:"有給",              color:"#d97706", bg:"#fef3c7",  hours:0    },
+  午前半休:    { label:"午後出勤（午前休）", color:"#c2410c", bg:"#ffedd5",  hours:4.125 },
+  午後半休:    { label:"午前出勤（午後休）", color:"#a16207", bg:"#fef9c3",  hours:4.125 },
 };
 
 const DAYS_JP = ["日","月","火","水","木","金","土"];
@@ -614,9 +615,10 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--txt)
 
 /* MODAL */
 .ov{position:fixed;inset:0;background:rgba(0,0,0,.42);
-  display:flex;align-items:center;justify-content:center;z-index:1000;padding:14px;}
+  display:flex;align-items:center;justify-content:center;z-index:1000;padding:14px;overflow-y:auto;}
 .modal{background:#fff;border-radius:15px;padding:22px;
-  width:100%;max-width:360px;box-shadow:0 18px 50px rgba(0,0,0,.18);}
+  width:100%;max-width:360px;box-shadow:0 18px 50px rgba(0,0,0,.18);
+  max-height:90vh;overflow-y:auto;}
 .modal h3{font-size:13px;font-weight:900;color:var(--txt);margin-bottom:3px;}
 .modal p{font-size:11px;color:var(--mut);margin-bottom:14px;}
 .mbtns{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
@@ -766,6 +768,7 @@ function shiftLabel(key) {
   if(key==="矯正当番_木") return "矯木";
   if(key==="土曜出勤")    return "土勤";
   if(key==="訪問")        return "訪問";
+  if(key==="AM_MT")       return "AMセミ";
   if(key==="午前のみ")    return "午前";
   if(key==="午前半休")    return "午後出";
   if(key==="午後半休")    return "午前出";
@@ -1140,6 +1143,82 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {/* 📋 欄外特記：院内・フナイ・セミナー・訪問・矯正日サマリー */}
+        {(()=>{
+          // セミナー
+          const monthSeminars=seminars.filter(sm=>{
+            const sd=new Date(sm.date);
+            return sd.getFullYear()===year&&sd.getMonth()===month;
+          }).sort((a,b)=>new Date(a.date)-new Date(b.date));
+          // 訪問
+          const monthVisits=visits.filter(v=>{
+            const vd=new Date(v.date);
+            return vd.getFullYear()===year&&vd.getMonth()===month;
+          }).sort((a,b)=>new Date(a.date)-new Date(b.date));
+          // 矯正
+          const kyoseiList=Object.entries(kyoseiDays).sort((a,b)=>Number(a[0])-Number(b[0]));
+
+          if(monthSeminars.length===0&&monthVisits.length===0&&kyoseiList.length===0) return null;
+
+          return (
+            <div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,
+              padding:"10px 14px",marginBottom:10,fontSize:11}}>
+              <div style={{fontWeight:800,fontSize:11,color:"var(--txt)",marginBottom:8}}>
+                📋 {year}年{month+1}月 特記事項
+              </div>
+              <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+                {kyoseiList.length>0&&(
+                  <div>
+                    <div style={{fontSize:9,fontWeight:800,color:"#065f46",marginBottom:4}}>🦷 矯正診療日</div>
+                    {kyoseiList.map(([d,ki])=>{
+                      const tBan=active.find(s=>shifts[`${s.id}_${d}`]==="矯正当番_土"||shifts[`${s.id}_${d}`]==="矯正当番_木");
+                      const time=ki.type==="土"?`${kyoseiTime.sat.start}〜${kyoseiTime.sat.end}`:`${kyoseiTime.thu.start}〜${kyoseiTime.thu.end}`;
+                      return (
+                        <div key={d} style={{marginBottom:2,color:"#047857"}}>
+                          {month+1}/{d}（{ki.label}）{time}
+                          {tBan&&<span style={{marginLeft:4,fontWeight:700}}>当番: {tBan.name}</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {monthSeminars.length>0&&(
+                  <div>
+                    <div style={{fontSize:9,fontWeight:800,color:"#7e22ce",marginBottom:4}}>🎓 セミナー</div>
+                    {monthSeminars.map(sm=>{
+                      const d=new Date(sm.date).getDate();
+                      const dow=DAYS_JP[new Date(sm.date).getDay()];
+                      const names=staff.filter(s=>sm.staffIds.includes(s.id)).map(s=>s.name).join("・");
+                      return (
+                        <div key={sm.id} style={{marginBottom:2,color:"#6d28d9"}}>
+                          {month+1}/{d}（{dow}）{sm.name} {sm.start}〜{sm.end}
+                          {names&&<span style={{marginLeft:4,fontSize:10,color:"#9333ea"}}>[{names}]</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {monthVisits.length>0&&(
+                  <div>
+                    <div style={{fontSize:9,fontWeight:800,color:"#0369a1",marginBottom:4}}>🏠 訪問</div>
+                    {monthVisits.map(v=>{
+                      const d=new Date(v.date).getDate();
+                      const dow=DAYS_JP[new Date(v.date).getDay()];
+                      const names=staff.filter(s=>v.staffIds.includes(s.id)).map(s=>s.name).join("・");
+                      return (
+                        <div key={v.id} style={{marginBottom:2,color:"#0369a1"}}>
+                          {month+1}/{d}（{dow}）{v.name||"訪問"} {v.start}〜{v.end}
+                          {names&&<span style={{marginLeft:4,fontSize:10}}>[{names}]</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* コントロール */}
         {isA&&(
@@ -2049,6 +2128,12 @@ export default function App() {
                     {s.kyoseiOrder!=null&&(
                       <span className="srl" style={{background:"#d1fae5",color:"#065f46"}}>矯正{s.kyoseiOrder}番</span>
                     )}
+                    <span className="srl" style={{background:s.loginId?"#dbeafe":"#fee2e2",color:s.loginId?"#1d4ed8":"#dc2626"}}>
+                      {s.loginId?`ID: ${s.loginId}`:"ID未設定"}
+                    </span>
+                    <span className="srl" style={{background:s.pin?"#dcfce7":"#fee2e2",color:s.pin?"#15803d":"#dc2626"}}>
+                      {s.pin?"PIN: ●●●●":"PIN未設定"}
+                    </span>
                   </div>
                   {/* 生年月日・入社年度 */}
                   <div style={{marginTop:6,display:"flex",gap:10,flexWrap:"wrap"}}>
@@ -2115,6 +2200,21 @@ export default function App() {
                     else if(n) toast_("2、2.5、3のいずれかで入力してください");
                   }}>週休変更</button>
                 )}
+                <button className="sb" onClick={()=>{
+                  const id=window.prompt(`${s.name} のログインIDを設定\n（半角英数字推奨）`,s.loginId||"");
+                  if(id===null) return;
+                  if(!id.trim()){toast_("IDを入力してください");return;}
+                  if(staff.some(st=>st.id!==s.id&&st.loginId===id.trim())){toast_("このIDは既に使われています");return;}
+                  setStaff(ps=>ps.map(st=>st.id===s.id?{...st,loginId:id.trim()}:st));
+                  toast_("ログインIDを設定しました");
+                }}>🪪 ID設定</button>
+                <button className="sb" onClick={()=>{
+                  const p=window.prompt(`${s.name} の4桁PINを設定`,s.pin||"");
+                  if(p===null) return;
+                  if(!/^\d{4}$/.test(p)){toast_("4桁の数字で入力してください");return;}
+                  setStaff(ps=>ps.map(st=>st.id===s.id?{...st,pin:p}:st));
+                  toast_("PINを設定しました");
+                }}>🔑 PIN設定</button>
                 <button className="sb del" onClick={()=>{if(window.confirm(`${s.name} を削除しますか？`)){setStaff(ps=>ps.filter(st=>st.id!==s.id));toast_(`${s.name} を削除しました`);}}}>削除</button>
               </div>
             </div>
@@ -2568,6 +2668,20 @@ export default function App() {
                 {isClinicHoliday(modal.year||year,modal.month??month,modal.day)&&" 🎌祝日"}
                 {(modal.month??month)===month&&kyoseiDays[modal.day]&&` 🦷${kyoseiDays[modal.day].label}矯正日`}
               </p>
+              {/* 同日の休み・有給人数を表示 */}
+              {(()=>{
+                const d=modal.day; const m=modal.month??month; const y=modal.year||year;
+                const restPeople=staff.filter(s=>s.active&&s.id!==modal.staffId&&
+                  (shifts[`${s.id}_${d}`]==="休み"||shifts[`${s.id}_${d}`]==="有給")
+                );
+                if(restPeople.length===0) return null;
+                return (
+                  <div style={{fontSize:10,color:"#b45309",background:"#fef3c7",borderRadius:6,
+                    padding:"4px 8px",marginBottom:8,fontWeight:600}}>
+                    ⚠️ 同日休み中：{restPeople.map(s=>s.name).join("、")}（{restPeople.length}人）
+                  </div>
+                );
+              })()}
               <div className="mbtns">
                 {Object.entries(SHIFT_TYPES).map(([k,v])=>(
                   <button key={k} className="mbtn" style={{borderColor:v.color,color:v.color}}
@@ -2781,18 +2895,56 @@ export default function App() {
 // ═══════════════════════════════════════════════════════
 function LoginScreen({onLogin,staff}){
   const [role,setRole]=useState("admin");
-  const [sel, setSel] =useState(staff[0]?.id||1);
-  const [pass,setPass]=useState("");
+  const [loginId,setLoginId]=useState("");
+  const [pin,setPin]=useState("");
+  const [err,setErr]=useState("");
 
   function go(){
+    setErr("");
     if(role==="admin"){
-      if(pass==="admin123") onLogin({role:"admin",name:"院長・管理者"});
-      else alert("パスワードが違います（デモ: admin123）");
+      if(pin==="admin123") onLogin({role:"admin",name:"院長・管理者"});
+      else setErr("パスワードが違います");
     } else {
-      const s=staff.find(st=>st.id===Number(sel));
-      if(s) onLogin({role:"staff",staffId:s.id,name:s.name});
+      const s=staff.find(st=>st.active&&st.loginId&&st.loginId===loginId.trim());
+      if(!s){ setErr("IDが見つかりません"); return; }
+      if(!s.pin){ setErr("PINが未設定です。管理者に連絡してください"); return; }
+      if(s.pin!==pin){ setErr("PINが違います"); return; }
+      onLogin({role:"staff",staffId:s.id,name:s.name});
     }
   }
+
+  // PINキーパッド
+  const PinPad=({value,onChange})=>(
+    <div style={{marginTop:8}}>
+      <div style={{display:"flex",gap:6,justifyContent:"center",marginBottom:8}}>
+        {[0,1,2,3].map(i=>(
+          <div key={i} style={{width:36,height:44,borderRadius:8,border:"2px solid",
+            borderColor:value.length>i?"#0f4c8a":"#e2e8f0",
+            background:value.length>i?"#dbeafe":"#f8fafc",
+            display:"flex",alignItems:"center",justifyContent:"center",
+            fontSize:20,fontWeight:900,color:"#0f4c8a",letterSpacing:2}}>
+            {value.length>i?"●":""}
+          </div>
+        ))}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,maxWidth:180,margin:"0 auto"}}>
+        {[1,2,3,4,5,6,7,8,9,"","0","⌫"].map((k,i)=>(
+          <button key={i} type="button"
+            style={{padding:"10px 0",borderRadius:8,border:"1.5px solid #e2e8f0",
+              background:k===""?"transparent":"rgba(255,255,255,.15)",
+              color:"#fff",fontSize:16,fontWeight:700,cursor:k===""?"default":"pointer",
+              fontFamily:"inherit",opacity:k===""?0:1}}
+            onClick={()=>{
+              if(k===""||!k) return;
+              if(k==="⌫") onChange(value.slice(0,-1));
+              else if(value.length<4) onChange(value+k);
+            }}>
+            {k}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 
   return (
     <>
@@ -2803,21 +2955,32 @@ function LoginScreen({onLogin,staff}){
           <div className="lttl">DentalShift PRO</div>
           <div className="lsub">歯科医院 シフト・有給管理システム</div>
           <div className="ltabs">
-            <button className={`ltab ${role==="admin"?"on":""}`} onClick={()=>setRole("admin")}>👑 管理者</button>
-            <button className={`ltab ${role==="staff"?"on":""}`} onClick={()=>setRole("staff")}>👤 スタッフ</button>
+            <button className={`ltab ${role==="admin"?"on":""}`} onClick={()=>{setRole("admin");setErr("");setPin("");}}>👑 管理者</button>
+            <button className={`ltab ${role==="staff"?"on":""}`} onClick={()=>{setRole("staff");setErr("");setPin("");}}>👤 スタッフ</button>
           </div>
-          {role==="admin"
-            ?<div className="lf"><label>パスワード</label><input type="password" placeholder="パスワードを入力" value={pass} onChange={e=>setPass(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()}/></div>
-            :<div className="lf"><label>スタッフを選択</label>
-              <select value={sel} onChange={e=>setSel(e.target.value)}>
-                {Object.keys(ROLES).map(r=>staff.filter(s=>s.role===r&&s.active).map(s=>(
-                  <option key={s.id} value={s.id}>{s.name}（{ROLES[s.role].label}）</option>
-                )))}
-              </select>
+          {role==="admin"?(
+            <div className="lf">
+              <label>パスワード</label>
+              <input type="password" placeholder="パスワードを入力" value={pin}
+                onChange={e=>setPin(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()}/>
             </div>
-          }
-          <button className="lbtn" onClick={go}>ログイン</button>
-          <div className="lhint">{role==="admin"?"demo: admin123":"パスワード不要（デモ）"}</div>
+          ):(
+            <div className="lf">
+              <label>スタッフID</label>
+              <input type="text" placeholder="IDを入力" value={loginId}
+                onChange={e=>{setLoginId(e.target.value);setErr("");}}
+                style={{textAlign:"center",fontSize:16,letterSpacing:2}}
+                onKeyDown={e=>e.key==="Enter"&&go()}/>
+              <label style={{marginTop:10}}>PIN（4桁）</label>
+              <PinPad value={pin} onChange={v=>{setPin(v);setErr("");}}/>
+            </div>
+          )}
+          {err&&<div style={{color:"#fca5a5",fontSize:11,textAlign:"center",marginTop:6,fontWeight:700}}>{err}</div>}
+          <button className="lbtn" onClick={go}
+            style={{opacity:(role==="staff"&&pin.length<4)?0.5:1}}>
+            ログイン
+          </button>
+          {role==="admin"&&<div className="lhint">demo: admin123</div>}
         </div>
       </div>
     </>
