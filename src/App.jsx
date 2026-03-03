@@ -873,6 +873,7 @@ export default function App() {
   const [semModal, setSemModal] = useState(null);
   const [visits, setVisits] = useDB("ds_visits", []);
   const [visitModal, setVisitModal] = useState(null);
+  const [idModal, setIdModal] = useState(null); // staffId for ID/PIN setting modal
   const [calStart, setCalStart] = useDB("ds_calStart", 11); // 1 or 11
 
   // ポップアップ外クリックで閉じる
@@ -2200,21 +2201,8 @@ export default function App() {
                     else if(n) toast_("2、2.5、3のいずれかで入力してください");
                   }}>週休変更</button>
                 )}
-                <button className="sb" onClick={()=>{
-                  const id=window.prompt(`${s.name} のログインIDを設定\n（半角英数字推奨）`,s.loginId||"");
-                  if(id===null) return;
-                  if(!id.trim()){toast_("IDを入力してください");return;}
-                  if(staff.some(st=>st.id!==s.id&&st.loginId===id.trim())){toast_("このIDは既に使われています");return;}
-                  setStaff(ps=>ps.map(st=>st.id===s.id?{...st,loginId:id.trim()}:st));
-                  toast_("ログインIDを設定しました");
-                }}>🪪 ID設定</button>
-                <button className="sb" onClick={()=>{
-                  const p=window.prompt(`${s.name} の4桁PINを設定`,s.pin||"");
-                  if(p===null) return;
-                  if(!/^\d{4}$/.test(p)){toast_("4桁の数字で入力してください");return;}
-                  setStaff(ps=>ps.map(st=>st.id===s.id?{...st,pin:p}:st));
-                  toast_("PINを設定しました");
-                }}>🔑 PIN設定</button>
+                <button className="sb" style={{background:"#eff6ff",color:"#1d4ed8",borderColor:"#bfdbfe"}}
+                  onClick={()=>setIdModal(s.id)}>🪪 ID・PIN設定</button>
                 <button className="sb del" onClick={()=>{if(window.confirm(`${s.name} を削除しますか？`)){setStaff(ps=>ps.filter(st=>st.id!==s.id));toast_(`${s.name} を削除しました`);}}}>削除</button>
               </div>
             </div>
@@ -2805,6 +2793,70 @@ export default function App() {
                 <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:4}}>
                   <button className="mcan" onClick={()=>setSemModal(null)}>キャンセル</button>
                   <button className="svbtn" onClick={save}>{isEdit?"更新":"追加"}</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ID・PIN設定モーダル */}
+      {idModal&&isA&&(()=>{
+        const s=staff.find(st=>st.id===idModal);
+        if(!s) return null;
+        let newId=s.loginId||"";
+        let newPin="";
+        let newPin2="";
+        return (
+          <div className="sem-modal-ov" onClick={()=>setIdModal(null)}>
+            <div className="sem-modal" onClick={e=>e.stopPropagation()} style={{maxWidth:360}}>
+              <h3 style={{color:"#1d4ed8"}}>🪪 ID・PIN設定</h3>
+              <div style={{fontSize:12,color:"var(--mut)",marginBottom:14,fontWeight:600}}>{s.name}（{ROLES[s.role]?.label}）</div>
+              <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                {/* ログインID */}
+                <div>
+                  <label style={{fontSize:10,fontWeight:800,color:"var(--mut)",display:"block",marginBottom:4}}>
+                    ログインID <span style={{fontSize:9,fontWeight:400}}>(半角英数字・記号)</span>
+                  </label>
+                  <input id="id-input" defaultValue={s.loginId||""} placeholder="例: yamada.hanako"
+                    style={{width:"100%",padding:"8px 10px",border:"1.5px solid #bfdbfe",borderRadius:8,
+                      fontSize:14,fontFamily:"inherit",letterSpacing:1}}/>
+                  {s.loginId&&<div style={{fontSize:9,color:"#64748b",marginTop:3}}>現在: {s.loginId}</div>}
+                </div>
+                {/* PIN */}
+                <div>
+                  <label style={{fontSize:10,fontWeight:800,color:"var(--mut)",display:"block",marginBottom:4}}>
+                    新しいPIN（4桁） <span style={{fontSize:9,fontWeight:400}}>{s.pin?"※空欄なら変更なし":""}</span>
+                  </label>
+                  <div style={{display:"flex",gap:8}}>
+                    <input id="pin-input" type="password" maxLength={4} placeholder="新PIN" inputMode="numeric"
+                      style={{width:"50%",padding:"8px 10px",border:"1.5px solid #bfdbfe",borderRadius:8,
+                        fontSize:18,fontFamily:"monospace",letterSpacing:4,textAlign:"center"}}/>
+                    <input id="pin-input2" type="password" maxLength={4} placeholder="確認" inputMode="numeric"
+                      style={{width:"50%",padding:"8px 10px",border:"1.5px solid #bfdbfe",borderRadius:8,
+                        fontSize:18,fontFamily:"monospace",letterSpacing:4,textAlign:"center"}}/>
+                  </div>
+                  {s.pin&&<div style={{fontSize:9,color:"#64748b",marginTop:3}}>現在: 設定済み ●●●●</div>}
+                </div>
+                {/* 保存 */}
+                <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:4}}>
+                  <button className="mcan" onClick={()=>setIdModal(null)}>キャンセル</button>
+                  <button className="svbtn" onClick={()=>{
+                    const loginId=document.getElementById("id-input").value.trim();
+                    const pin1=document.getElementById("pin-input").value;
+                    const pin2=document.getElementById("pin-input2").value;
+                    if(!loginId){toast_("IDを入力してください");return;}
+                    if(staff.some(st=>st.id!==s.id&&st.loginId===loginId)){toast_("このIDは既に使われています");return;}
+                    if(pin1||pin2){
+                      if(!/^\d{4}$/.test(pin1)){toast_("PINは4桁の数字で入力してください");return;}
+                      if(pin1!==pin2){toast_("PINが一致しません");return;}
+                      setStaff(ps=>ps.map(st=>st.id===s.id?{...st,loginId,pin:pin1}:st));
+                    } else {
+                      setStaff(ps=>ps.map(st=>st.id===s.id?{...st,loginId}:st));
+                    }
+                    toast_(`${s.name} のID・PINを設定しました`);
+                    setIdModal(null);
+                  }}>保存</button>
                 </div>
               </div>
             </div>
