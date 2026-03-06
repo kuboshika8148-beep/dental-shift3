@@ -1158,108 +1158,61 @@ export default function App() {
           </div>
         </div>
 
-        {/* セミナーバナー（今月分） */}
-        {seminars.filter(sm=>{
-          const sd=new Date(sm.date);
-          return sd.getFullYear()===year&&sd.getMonth()===month;
-        }).sort((a,b)=>new Date(a.date)-new Date(b.date)).map(sm=>{
-          const d=new Date(sm.date).getDate();
-          const dow=DAYS_JP[new Date(sm.date).getDay()];
-          const participants=staff.filter(s=>sm.staffIds.includes(s.id));
-          return (
-            <div key={sm.id} className="sem-banner">
-              <div className="sem-banner sh">
-                <span style={{fontSize:16}}>🎓</span>
-                <span className="sem-banner sn">{sm.name}</span>
-                <span className="sem-banner st">{month+1}/{d}（{dow}）{sm.start}〜{sm.end}</span>
-                {isA&&<button style={{marginLeft:"auto",fontSize:9,padding:"2px 8px",borderRadius:5,border:"1px solid #d8b4fe",background:"#fff",color:"#7e22ce",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}
-                  onClick={()=>setSemModal(sm.id)}>編集</button>}
-                {isA&&<button style={{fontSize:9,padding:"2px 8px",borderRadius:5,border:"1px solid #fca5a5",background:"#fff",color:"#dc2626",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}
-                  onClick={()=>{if(window.confirm(`「${sm.name}」を削除しますか？`)){setSeminars(ps=>ps.filter(x=>x.id!==sm.id));}}}>削除</button>}
-              </div>
-              <div className="sem-banner sp">
-                <span style={{fontSize:9,color:"#9333ea",fontWeight:700,marginRight:2}}>参加：</span>
-                {participants.map(s=>(
-                  <span key={s.id} className="sem-badge">{s.name}<span className="sem-dot"/></span>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-
-        {/* 訪問バナー（今月分） */}
-        {visits.filter(v=>{
-          const vd=new Date(v.date);
-          return vd.getFullYear()===year&&vd.getMonth()===month;
-        }).sort((a,b)=>new Date(a.date)-new Date(b.date)).map(v=>{
-          const d=new Date(v.date).getDate();
-          const dow=DAYS_JP[new Date(v.date).getDay()];
-          const participants=staff.filter(s=>v.staffIds.includes(s.id));
-          const hrs=v.start&&v.end?(()=>{
-            const [sh,sm]=v.start.split(":").map(Number);
-            const [eh,em]=v.end.split(":").map(Number);
-            const mins=(eh*60+em)-(sh*60+sm)-(v.breakMin||0);
-            return Math.round(mins/60*10)/10;
+        {/* セミナー・訪問カード（今月分） */}
+        {[...seminars.filter(sm=>{const sd=new Date(sm.date);return sd.getFullYear()===year&&sd.getMonth()===month;}).map(sm=>({...sm,_type:"sem"})),
+           ...visits.filter(v=>{const vd=new Date(v.date);return vd.getFullYear()===year&&vd.getMonth()===month;}).map(v=>({...v,_type:"vis"}))
+          ].sort((a,b)=>new Date(a.date)-new Date(b.date)).map(item=>{
+          const isSem=item._type==="sem";
+          const d=new Date(item.date).getDate();
+          const dow=DAYS_JP[new Date(item.date).getDay()];
+          const participants=staff.filter(s=>item.staffIds.includes(s.id));
+          const hrs=!isSem&&item.start&&item.end?(()=>{
+            const [sh,sm2]=item.start.split(":").map(Number);
+            const [eh,em]=item.end.split(":").map(Number);
+            return Math.round(((eh*60+em)-(sh*60+sm2)-(item.breakMin||0))/60*10)/10;
           })():null;
+          const accent=isSem?"#9333ea":"#0369a1";
+          const bg=isSem?"#faf5ff":"#f0f9ff";
+          const border=isSem?"#d8b4fe":"#7dd3fc";
           return (
-            <div key={v.id} className="sem-banner" style={{borderColor:"#7dd3fc",background:"#f0f9ff"}}>
-              <div className="sem-banner sh">
-                <span style={{fontSize:16}}>🏠</span>
-                <span className="sem-banner sn" style={{color:"#0369a1"}}>{v.name||"訪問"}</span>
-                <span className="sem-banner st">{month+1}/{d}（{dow}）{v.start}〜{v.end}{hrs?` (${hrs}h)`:""}</span>
-                {isA&&<button style={{marginLeft:"auto",fontSize:9,padding:"2px 8px",borderRadius:5,border:"1px solid #7dd3fc",background:"#fff",color:"#0369a1",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}
-                  onClick={()=>setVisitModal(v.id)}>編集</button>}
-                {isA&&<button style={{fontSize:9,padding:"2px 8px",borderRadius:5,border:"1px solid #fca5a5",background:"#fff",color:"#dc2626",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}
-                  onClick={()=>{if(window.confirm(`「${v.name||"訪問"}」を削除しますか？`)){setVisits(ps=>ps.filter(x=>x.id!==v.id));}}}>削除</button>}
+            <div key={item.id} style={{background:bg,border:`1.5px solid ${border}`,borderRadius:10,
+              padding:"8px 12px",marginBottom:6,display:"flex",flexDirection:"column",gap:4}}>
+              <div style={{display:"flex",alignItems:"center",gap:5}}>
+                <span style={{fontSize:13}}>{isSem?"🎓":"🏠"}</span>
+                <span style={{fontWeight:800,fontSize:11,color:accent}}>{isSem?item.name:(item.name||"訪問")}</span>
+                <span style={{fontSize:10,color:"#64748b",marginLeft:4}}>{month+1}/{d}（{dow}）{item.start}〜{item.end}{hrs?` (${hrs}h)`:""}</span>
+                {isA&&<>
+                  <button style={{marginLeft:"auto",fontSize:8,padding:"1px 6px",borderRadius:4,border:`1px solid ${border}`,background:"#fff",color:accent,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}
+                    onClick={()=>isSem?setSemModal(item.id):setVisitModal(item.id)}>編集</button>
+                  <button style={{fontSize:8,padding:"1px 6px",borderRadius:4,border:"1px solid #fca5a5",background:"#fff",color:"#dc2626",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}
+                    onClick={()=>{if(window.confirm("削除しますか？")){isSem?setSeminars(ps=>ps.filter(x=>x.id!==item.id)):setVisits(ps=>ps.filter(x=>x.id!==item.id));}}}>削除</button>
+                </>}
               </div>
-              <div className="sem-banner sp">
-                <span style={{fontSize:9,color:"#0369a1",fontWeight:700,marginRight:2}}>参加：</span>
+              <div style={{display:"flex",flexWrap:"wrap",gap:3,alignItems:"center"}}>
+                <span style={{fontSize:9,color:accent,fontWeight:700}}>参加：</span>
                 {participants.map(s=>(
-                  <span key={s.id} className="sem-badge" style={{borderColor:"#7dd3fc",color:"#0369a1"}}>{s.name}</span>
+                  <span key={s.id} style={{fontSize:9,background:"#fff",border:`1px solid ${border}`,
+                    color:accent,borderRadius:10,padding:"1px 6px",fontWeight:600}}>{s.name}</span>
                 ))}
               </div>
             </div>
           );
         })}
 
-        {/* 矯正日インフォ */}
-        {Object.keys(kyoseiDays).length>0&&(
-          <div className="kinfo">
-            <div className="kinfo-title">🦷 今月の矯正診療日</div>
-            <div className="kinfo-grid">
-              {Object.entries(kyoseiDays).map(([d,ki])=>{
-                const assignedId=autoSchedule(year,month,active,minSt)[`_kyosei_${d}`];
-                // 担当者を shifts から探す
-                const tBan=active.find(s=>shifts[`${s.id}_${d}`]==="矯正当番_土"||shifts[`${s.id}_${d}`]==="矯正当番_木");
-                return (
-                  <div className="kinfo-item" key={d}>
-                    <strong>{month+1}/{d}（{ki.label}）</strong><br/>
-                    {ki.type==="土"?`${kyoseiTime.sat.start}〜${kyoseiTime.sat.end}`:`${kyoseiTime.thu.start}〜${kyoseiTime.thu.end}`}
-                    {tBan&&<span style={{marginLeft:6,fontSize:11,fontWeight:700,background:"#d1fae5",
-                      color:"#065f46",padding:"1px 6px",borderRadius:8}}>当番: {tBan.name}</span>}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+        {/* 矯正日インフォ - 特記事項と重複するため削除 */}
 
-        {/* 📋 欄外特記：院内・フナイ・セミナー・訪問・矯正日サマリー */}
+        {/* 📋 欄外特記：セミナー・訪問サマリー */}
         {(()=>{
-          // セミナー
           const monthSeminars=seminars.filter(sm=>{
             const sd=new Date(sm.date);
             return sd.getFullYear()===year&&sd.getMonth()===month;
           }).sort((a,b)=>new Date(a.date)-new Date(b.date));
-          // 訪問
           const monthVisits=visits.filter(v=>{
             const vd=new Date(v.date);
             return vd.getFullYear()===year&&vd.getMonth()===month;
           }).sort((a,b)=>new Date(a.date)-new Date(b.date));
-          // 矯正
-          const kyoseiList=Object.entries(kyoseiDays).sort((a,b)=>Number(a[0])-Number(b[0]));
 
-          if(monthSeminars.length===0&&monthVisits.length===0&&kyoseiList.length===0) return null;
+          if(monthSeminars.length===0&&monthVisits.length===0) return null;
 
           return (
             <div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,
@@ -1268,21 +1221,6 @@ export default function App() {
                 📋 {year}年{month+1}月 特記事項
               </div>
               <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
-                {kyoseiList.length>0&&(
-                  <div>
-                    <div style={{fontSize:9,fontWeight:800,color:"#065f46",marginBottom:4}}>🦷 矯正診療日</div>
-                    {kyoseiList.map(([d,ki])=>{
-                      const tBan=active.find(s=>shifts[`${s.id}_${d}`]==="矯正当番_土"||shifts[`${s.id}_${d}`]==="矯正当番_木");
-                      const time=ki.type==="土"?`${kyoseiTime.sat.start}〜${kyoseiTime.sat.end}`:`${kyoseiTime.thu.start}〜${kyoseiTime.thu.end}`;
-                      return (
-                        <div key={d} style={{marginBottom:2,color:"#047857"}}>
-                          {month+1}/{d}（{ki.label}）{time}
-                          {tBan&&<span style={{marginLeft:4,fontWeight:700}}>当番: {tBan.name}</span>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
                 {monthSeminars.length>0&&(
                   <div>
                     <div style={{fontSize:9,fontWeight:800,color:"#7e22ce",marginBottom:4}}>🎓 セミナー</div>
@@ -1335,20 +1273,6 @@ export default function App() {
             </div>
           </div>
         )}
-        {isA&&overAlerts.length>0&&(
-          <div className="hrsbar">
-            <span style={{fontSize:16}}>🕐</span>
-            <div>
-              <div style={{fontWeight:800,marginBottom:4,fontSize:11}}>変形労働時間超過（月標準{stdH}h超え）</div>
-              <ul className="alist">
-                {overAlerts.map(s=>(
-                  <li key={s.id} style={{background:"#fef3c7",color:"#92400e"}}>{s.name} {staffH[s.id]}h</li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        )}
-
         {/* 凡例 */}
         <div className="legend">
           {Object.entries(SHIFT_TYPES).map(([k,v])=>(
@@ -1632,6 +1556,7 @@ export default function App() {
         )}
 
       </div>
+      </div>
     );
   };
 
@@ -1648,6 +1573,19 @@ export default function App() {
             <button onClick={()=>changeMonth(month===11?year+1:year, month===11?0:month+1)}>›</button>
           </div>
         </div>
+        {overAlerts.length>0&&(
+          <div className="hrsbar">
+            <span style={{fontSize:16}}>🕐</span>
+            <div>
+              <div style={{fontWeight:800,marginBottom:4,fontSize:11}}>変形労働時間超過（月標準{stdH}h超え）</div>
+              <ul className="alist">
+                {overAlerts.map(s=>(
+                  <li key={s.id} style={{background:"#fef3c7",color:"#92400e"}}>{s.name} {staffH[s.id]}h</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
         <div className="fwrap" style={{marginBottom:16}}>
           <div className="cpt">📋 変形労働時間制（週40時間基準）</div>
           <div style={{display:"flex",gap:22,flexWrap:"wrap",fontSize:12}}>
