@@ -1556,7 +1556,7 @@ export default function App() {
         )}
 
       </div>
-      </div>
+    </div>
     );
   };
 
@@ -1649,6 +1649,7 @@ export default function App() {
           })}
         </div>
       </div>
+    </div>
     );
   };
 
@@ -1952,6 +1953,7 @@ export default function App() {
           </table>
         </div>
       </div>
+    </div>
     );
   };
 
@@ -2050,6 +2052,7 @@ export default function App() {
           </div>
         </div>
       </div>
+    </div>
     );
   };
 
