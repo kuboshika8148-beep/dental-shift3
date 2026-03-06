@@ -831,18 +831,31 @@ function useDB(key, init) {
   const [synced, setSynced] = useState(false);
 
   useEffect(() => {
-    // keyが変わったらlocalStorageから即時読み込み＆syncedリセット
     setSynced(false);
     let cancelled = false;
+    // まずlocalStorageから即時読み込み
     try {
       const s = localStorage.getItem(key);
-      setVal(s ? JSON.parse(s) : (typeof init === "function" ? init() : init));
+      if (s) setVal(JSON.parse(s));
+      else setVal(typeof init === "function" ? init() : init);
     } catch {}
+    // Supabaseから取得（localStorageにない場合のみ使用）
     sbGet(key).then(remote => {
       if (cancelled) return;
-      if (remote !== null && Object.keys(remote).length > 0) {
-        setVal(remote);
-        try { localStorage.setItem(key, JSON.stringify(remote)); } catch {}
+      if (remote !== null) {
+        // localStorageのデータを優先。なければSupabaseのデータを使う
+        try {
+          const local = localStorage.getItem(key);
+          const localData = local ? JSON.parse(local) : null;
+          const localEmpty = !localData || (typeof localData === 'object' && Object.keys(localData).length === 0);
+          if (localEmpty) {
+            setVal(remote);
+            try { localStorage.setItem(key, JSON.stringify(remote)); } catch {}
+          }
+          // localにデータがあればSupabaseは無視（setShifts経由で既に最新）
+        } catch {
+          setVal(remote);
+        }
       }
       setSynced(true);
     });
@@ -876,7 +889,7 @@ export default function App() {
   // 翌月シフト（11〜10表示モード用）
   const nxtDispY = month===11?year+1:year;
   const nxtDispM = month===11?0:month+1;
-  const nxtShiftsKey = `ds_shifts_${nxtDispY}_${nxtDispM}`;
+  const nxtShiftsKey = `ds_shifts_nxt_${year}_${month}`; // 当月表示用の翌月先読み（翌月本体とは別キー）
   const [nxtShifts, setNxtShifts] = useDB(nxtShiftsKey, {});
   const [wishes,  setWishes]  = useDB("ds_wishes",  {});
   const [minSt,   setMinSt]   = useDB("ds_minSt",   DEFAULT_MIN);
@@ -913,20 +926,18 @@ export default function App() {
   },[]); // staffId for ID/PIN setting modal
   const [calStart, setCalStart] = useDB("ds_calStart", 11); // 1 or 11
 
-  // 月が変わったとき、shiftsが空なら自動生成
+  // 月移動後にshiftsが空なら自動生成
   useEffect(()=>{
+    if(!staffSynced) return;
     if(staff.filter(s=>s.active).length===0) return;
-    // localStorageにキャッシュがあればそれを使う
-    try{
-      const cached=localStorage.getItem(shiftsKey);
-      if(cached){
-        const parsed=JSON.parse(cached);
-        if(Object.keys(parsed).length>0) return; // データあり、生成不要
-      }
-    }catch{}
-    // キャッシュなし→自動生成
-    handleAuto(year, month);
-  },[shiftsKey]);
+    // shiftsのstateではなくlocalStorageを直接確認（stale closure回避）
+    try {
+      const cached = localStorage.getItem(shiftsKey);
+      const data = cached ? JSON.parse(cached) : null;
+      if(data && Object.keys(data).length > 0) return; // データあり
+    } catch {}
+    handleAuto();
+  },[year, month, staffSynced]);
 
   // ポップアップ外クリックで閉じる
   useEffect(()=>{
@@ -991,17 +1002,16 @@ export default function App() {
     toast_("シフトを更新しました");
   }
 
-  function handleAuto(targetYear=year, targetMonth=month){
-    const targetD=dim(targetYear,targetMonth);
+  function handleAuto(){
     const activeStaff=staff.filter(s=>s.active);
+    if(activeStaff.length===0) return;
 
-    // 対象月の矯正日
-    const targetKyoseiDays={};
-    for(let d=1;d<=targetD;d++){
-      const ki=kyoseiInfo(targetYear,targetMonth,d);
+    // 矯正日
+    const targetKyoseiDays={...kyoseiDays};
+    for(let d=1;d<=D;d++){
+      const ki=kyoseiInfo(year,month,d);
       if(ki) targetKyoseiDays[d]=ki;
     }
-    if(targetYear===year&&targetMonth===month) Object.assign(targetKyoseiDays, kyoseiDays);
 
     // 矯正日の手動設定を保持
     const kyoseiAssignedManual={};
@@ -1018,41 +1028,27 @@ export default function App() {
       });
     });
 
-    // シフト生成
-    const newShifts=autoSchedule(targetYear,targetMonth,activeStaff,minSt,kyoseiAssignedManual,kyoseiRestManual,targetKyoseiDays);
+    // 当月シフト生成
+    const newShifts=autoSchedule(year,month,activeStaff,minSt,kyoseiAssignedManual,kyoseiRestManual,targetKyoseiDays);
 
-    // 翌月1〜10日も生成
-    const tNxtY=targetMonth===11?targetYear+1:targetYear;
-    const tNxtM=targetMonth===11?0:targetMonth+1;
+    // 翌月1〜10日も生成（11〜10表示用）
     const nxtKD={};
-    for(let d=1;d<=10;d++){ const ki=kyoseiInfo(tNxtY,tNxtM,d); if(ki) nxtKD[d]=ki; }
-    const nxtNew=autoSchedule(tNxtY,tNxtM,activeStaff,minSt,{},{},nxtKD);
+    for(let d=1;d<=10;d++){ const ki=kyoseiInfo(nxtDispY,nxtDispM,d); if(ki) nxtKD[d]=ki; }
+    const nxtNew=autoSchedule(nxtDispY,nxtDispM,activeStaff,minSt,{},{},nxtKD);
     const nxtOnly={};
     activeStaff.forEach(s=>{
       for(let d=1;d<=10;d++) if(nxtNew[`${s.id}_${d}`]) nxtOnly[`${s.id}_${d}`]=nxtNew[`${s.id}_${d}`];
     });
 
-    // localStorageに保存
-    const tKey=`ds_shifts_${targetYear}_${targetMonth}`;
-    const nKey=`ds_shifts_${tNxtY}_${tNxtM}`;
-    try{ localStorage.setItem(tKey, JSON.stringify(newShifts)); }catch{}
-    try{ localStorage.setItem(nKey, JSON.stringify(nxtOnly)); }catch{}
-    _notifySave(_pendingSaves+1);
-    Promise.all([sbSet(tKey,newShifts), sbSet(nKey,nxtOnly)])
-      .finally(()=>_notifySave(Math.max(0,_pendingSaves-1)));
-
-    // stateを即時更新
     setShifts(newShifts);
     setNxtShifts(nxtOnly);
-
     toast_("✨ シフトを自動作成しました");
   }
+
   // 月移動：未入力の月は自動生成
   function changeMonth(newYear, newMonth){
     setYear(newYear);
     setMonth(newMonth);
-    // shiftsは新月のuseDBが読み込まれるまで待つ必要があるため
-    // useEffectで空かどうかチェックして自動生成
   }
 
   // 日別・役職別 出勤数（セミナー参加者を除外）
