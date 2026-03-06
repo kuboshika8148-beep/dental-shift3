@@ -264,40 +264,40 @@ function autoSchedule(y,m,staff,minStaff,kyoseiAssignedManual={},kyoseiRestManua
       const isHalfPM=restEntry?.type==="午後";
 
       // 定休（全日）
-      if(restEntry?.type==="全日"){ shifts[`${s.id}_${d}`]="休み"; return; }
+      if(restEntry?.type==="全日"){ shifts[`${s.id}_${y}_${m}_${d}`]="休み"; return; }
 
       // 全日休み（週休割当）
-      if(restDaysSet[s.id].has(d)){ shifts[`${s.id}_${d}`]="休み"; return; }
+      if(restDaysSet[s.id].has(d)){ shifts[`${s.id}_${y}_${m}_${d}`]="休み"; return; }
 
       // 矯正日
       if(ki){
         if(kyoseiAssigned[d]===s.id){
           // 当番：土曜矯正は矯正当番_土、木曜は矯正当番_木
-          shifts[`${s.id}_${d}`]=ki.type==="土"?"矯正当番_土":"矯正当番_木";
+          shifts[`${s.id}_${y}_${m}_${d}`]=ki.type==="土"?"矯正当番_土":"矯正当番_木";
           return;
         }
         if(kyoseiRestManual[s.id]?.has(d)){
-          shifts[`${s.id}_${d}`]="休み"; return;
+          shifts[`${s.id}_${y}_${m}_${d}`]="休み"; return;
         }
         // 矯正日の非当番：半日設定があれば半日、なければ通常出勤
-        if(isHalfAM){ shifts[`${s.id}_${d}`]="午前半休"; return; }
-        if(isHalfPM){ shifts[`${s.id}_${d}`]="午後半休"; return; }
+        if(isHalfAM){ shifts[`${s.id}_${y}_${m}_${d}`]="午前半休"; return; }
+        if(isHalfPM){ shifts[`${s.id}_${y}_${m}_${d}`]="午後半休"; return; }
         if(halfDaysSet[s.id]?.has(d)){
-          shifts[`${s.id}_${d}`]=s.id%2===1?"午前半休":"午後半休"; return;
+          shifts[`${s.id}_${y}_${m}_${d}`]=s.id%2===1?"午前半休":"午後半休"; return;
         }
         // 矯正日非当番の通常出勤（土曜は土曜出勤）
-        shifts[`${s.id}_${d}`]=dow===6?"土曜出勤":"出勤"; return;
+        shifts[`${s.id}_${y}_${m}_${d}`]=dow===6?"土曜出勤":"出勤"; return;
       }
 
       // 通常日（土曜含む）
       if(isHalfAM){
-        shifts[`${s.id}_${d}`]="午前半休";
+        shifts[`${s.id}_${y}_${m}_${d}`]="午前半休";
       } else if(isHalfPM){
-        shifts[`${s.id}_${d}`]="午後半休";
+        shifts[`${s.id}_${y}_${m}_${d}`]="午後半休";
       } else if(halfDaysSet[s.id]?.has(d)){
-        shifts[`${s.id}_${d}`]=s.id%2===1?"午前半休":"午後半休";
+        shifts[`${s.id}_${y}_${m}_${d}`]=s.id%2===1?"午前半休":"午後半休";
       } else {
-        shifts[`${s.id}_${d}`]=dow===6?"土曜出勤":"出勤";
+        shifts[`${s.id}_${y}_${m}_${d}`]=dow===6?"土曜出勤":"出勤";
       }
     });
   }
@@ -941,28 +941,18 @@ export default function App() {
   },[year,month,D,extraKyosei,deletedKyosei]);
 
   function applyShift(sid, day, type, y=year, m=month){
-    // 翌月分は年月付きキー、当月分は従来キー
-    const isCurrentMonth = (y===year && m===month);
-    const key = isCurrentMonth ? `${sid}_${day}` : `${sid}_${y}_${m}_${day}`;
-    const legacyKey = `${sid}_${day}`; // 当月の従来キー
+    const key = `${sid}_${y}_${m}_${day}`;
     setShifts(prev=>{
       const next={...prev};
-      const cur = prev[key] ?? prev[legacyKey];
+      const cur = prev[key];
       if(cur==="有給"&&type!=="有給")
         setStaff(ps=>ps.map(s=>s.id===sid?{...s,used:Math.max(0,s.used-1)}:s));
-      if(type===null){
-        delete next[key];
-        delete next[legacyKey];
-      } else {
-        next[key]=type;
-      }
+      if(type===null) delete next[key];
+      else next[key]=type;
       return next;
     });
-    if(type==="有給"){
-      const cur = shifts[key] ?? shifts[legacyKey];
-      if(cur!=="有給")
-        setStaff(ps=>ps.map(s=>s.id===sid?{...s,used:Math.min(s.leave,s.used+1)}:s));
-    }
+    if(type==="有給"&&shifts[key]!=="有給")
+      setStaff(ps=>ps.map(s=>s.id===sid?{...s,used:Math.min(s.leave,s.used+1)}:s));
     setModal(null);
     toast_("シフトを更新しました");
   }
@@ -989,7 +979,7 @@ export default function App() {
       const d=Number(ds);
       activeStaff.forEach(s=>{
         // 両キー形式で既存シフトを取得
-        const sh=shifts[shiftKey(s.id,targetYear,targetMonth,d)]??shifts[`${s.id}_${d}`];
+        const sh=shifts[shiftKey(s.id,targetYear,targetMonth,d)];
         if(sh==="矯正当番_土"||sh==="矯正当番_木") kyoseiAssignedManual[d]=s.id;
         else if(sh==="休み"){
           if(!kyoseiRestManual[s.id]) kyoseiRestManual[s.id]=new Set();
@@ -1010,31 +1000,19 @@ export default function App() {
 
     setShifts(prev=>{
       const next={...prev};
-      // 対象月の全キー（両形式）を削除
+      // 対象月のキーを削除（staffId_year_month_day 形式のみ）
       activeStaff.forEach(s=>{
-        for(let d=1;d<=targetD;d++){
-          delete next[shiftKey(s.id,targetYear,targetMonth,d)];
-          // staffId_day キーは当月（year/month）のときだけ削除
-          if(targetYear===year&&targetMonth===month) delete next[`${s.id}_${d}`];
-        }
-        for(let d=1;d<=10;d++) delete next[shiftKey(s.id,nxtY,nxtM,d)];
+        for(let d=1;d<=targetD;d++) delete next[`${s.id}_${targetYear}_${targetMonth}_${d}`];
+        for(let d=1;d<=10;d++) delete next[`${s.id}_${nxtY}_${nxtM}_${d}`];
       });
-      // 新シフトを year_month_day キーで保存
-      activeStaff.forEach(s=>{
-        for(let d=1;d<=targetD;d++){
-          const v=raw[`${s.id}_${d}`];
-          if(v){
-            next[shiftKey(s.id,targetYear,targetMonth,d)]=v;
-            // 当月は旧キーにも保存（既存の手動入力との互換性）
-            if(targetYear===year&&targetMonth===month) next[`${s.id}_${d}`]=v;
-          }
-        }
-        for(let d=1;d<=10;d++){
-          const v=nxtRaw[`${s.id}_${d}`];
-          if(v) next[shiftKey(s.id,nxtY,nxtM,d)]=v;
-        }
-      });
-      return next;
+      // 新シフトをマージ（autoScheduleが既にy_m_dキーで返す）
+      return {...next, ...raw, ...Object.fromEntries(
+        activeStaff.flatMap(s=>
+          Array.from({length:10},(_,i)=>i+1)
+            .filter(d=>nxtRaw[`${s.id}_${nxtY}_${nxtM}_${d}`])
+            .map(d=>[`${s.id}_${nxtY}_${nxtM}_${d}`, nxtRaw[`${s.id}_${nxtY}_${nxtM}_${d}`]])
+        )
+      )};
     });
     toast_("✨ シフトを自動作成しました");
   }
@@ -1047,7 +1025,7 @@ export default function App() {
     const activeStaff=staff.filter(s=>s.active);
     const hasShift=activeStaff.some(s=>{
       for(let d=1;d<=newD;d++){
-        if(shifts[shiftKey(s.id,newYear,newMonth,d)]||shifts[`${s.id}_${d}`]) return true;
+        if(shifts[shiftKey(s.id,newYear,newMonth,d)]) return true;
       }
       return false;
     });
@@ -1068,7 +1046,7 @@ export default function App() {
       map[d]={};
       Object.keys(ROLES).forEach(role=>{
         map[d][role]=staff.filter(s=>s.role===role&&s.active&&!semStaff.has(s.id)).filter(s=>{
-          const sh=shifts[`${s.id}_${d}`];
+          const sh=shifts[`${s.id}_${year}_${month}_${d}`];
           return sh&&sh!=="休み"&&sh!=="有給";
         }).length;
       });
@@ -1082,7 +1060,7 @@ export default function App() {
     staff.forEach(s=>{
       let h=0;
       for(let d=1;d<=D;d++){
-        const sh=shifts[`${s.id}_${d}`];
+        const sh=shifts[`${s.id}_${year}_${month}_${d}`];
         if(sh&&SHIFT_TYPES[sh]) h+=SHIFT_TYPES[sh].hours;
       }
       map[s.id]=Math.round(h*10)/10;
@@ -1233,7 +1211,7 @@ export default function App() {
               {Object.entries(kyoseiDays).map(([d,ki])=>{
                 const assignedId=autoSchedule(year,month,active,minSt)[`_kyosei_${d}`];
                 // 担当者を shifts から探す
-                const tBan=active.find(s=>shifts[`${s.id}_${d}`]==="矯正当番_土"||shifts[`${s.id}_${d}`]==="矯正当番_木");
+                const tBan=active.find(s=>shifts[`${s.id}_${year}_${month}_${d}`]==="矯正当番_土"||shifts[`${s.id}_${year}_${month}_${d}`]==="矯正当番_木");
                 return (
                   <div className="kinfo-item" key={d}>
                     <strong>{month+1}/{d}（{ki.label}）</strong><br/>
@@ -1275,7 +1253,7 @@ export default function App() {
                   <div>
                     <div style={{fontSize:9,fontWeight:800,color:"#065f46",marginBottom:4}}>🦷 矯正診療日</div>
                     {kyoseiList.map(([d,ki])=>{
-                      const tBan=active.find(s=>shifts[`${s.id}_${d}`]==="矯正当番_土"||shifts[`${s.id}_${d}`]==="矯正当番_木");
+                      const tBan=active.find(s=>shifts[`${s.id}_${year}_${month}_${d}`]==="矯正当番_土"||shifts[`${s.id}_${year}_${month}_${d}`]==="矯正当番_木");
                       const time=ki.type==="土"?`${kyoseiTime.sat.start}〜${kyoseiTime.sat.end}`:`${kyoseiTime.thu.start}〜${kyoseiTime.thu.end}`;
                       return (
                         <div key={d} style={{marginBottom:2,color:"#047857"}}>
@@ -1574,7 +1552,7 @@ export default function App() {
                         const hol=isClinicHoliday(y,m,d);
                         const ki=m===month?kyoseiDays[d]:null;
                         const isOff = hol || dow === 0; // 日曜・祝日
-                        const sh = isOff ? null : (shifts[`${s.id}_${y}_${m}_${d}`]||shifts[`${s.id}_${d}`]);
+                        const sh = isOff ? null : (shifts[`${s.id}_${y}_${m}_${d}`]);
                         const ws = isOff ? null : wishes[`${s.id}_${d}`];
                         const st=SHIFT_TYPES[sh];
                         const inSeminar=!isOff&&seminars.some(sm=>{
@@ -1737,7 +1715,7 @@ export default function App() {
         const ki=kyoseiDays[d];
         if(ki){
           const tban=staff.filter(s=>s.active).find(s=>
-            shifts[`${s.id}_${d}`]==="矯正当番_土"||shifts[`${s.id}_${d}`]==="矯正当番_木"
+            shifts[`${s.id}_${year}_${month}_${d}`]==="矯正当番_土"||shifts[`${s.id}_${year}_${month}_${d}`]==="矯正当番_木"
           );
           res.push({day:d,ki,tban});
         }
@@ -2780,7 +2758,7 @@ export default function App() {
           for(let d=1;d<=D;d++){
             const dow=new Date(year,month,d).getDay();
             if(dow===0||isClinicHoliday(year,month,d)) continue;
-            const sh=shifts[`${s.id}_${d}`]||null;
+            const sh=shifts[`${s.id}_${year}_${month}_${d}`]||null;
             entries.push({d,dow,sh});
           }
           const workDays=entries.filter(e=>e.sh&&e.sh!=="休み"&&e.sh!=="有給");
@@ -2852,7 +2830,7 @@ export default function App() {
               {(()=>{
                 const d=modal.day; const m=modal.month??month; const y=modal.year||year;
                 const restPeople=staff.filter(s=>s.active&&s.id!==modal.staffId&&
-                  (shifts[`${s.id}_${d}`]==="休み"||shifts[`${s.id}_${d}`]==="有給")
+                  (shifts[`${s.id}_${year}_${month}_${d}`]==="休み"||shifts[`${s.id}_${year}_${month}_${d}`]==="有給")
                 );
                 if(restPeople.length===0) return null;
                 return (
