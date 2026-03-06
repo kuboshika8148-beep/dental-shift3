@@ -831,6 +831,12 @@ function useDB(key, init) {
   const [synced, setSynced] = useState(false);
 
   useEffect(() => {
+    // keyが変わったらlocalStorageから即時読み込み＆syncedリセット
+    setSynced(false);
+    try {
+      const s = localStorage.getItem(key);
+      setVal(s ? JSON.parse(s) : (typeof init === "function" ? init() : init));
+    } catch {}
     sbGet(key).then(remote => {
       if (remote !== null) {
         setVal(remote);
