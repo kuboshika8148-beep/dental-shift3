@@ -969,25 +969,7 @@ export default function App() {
 
   function handleAuto(targetYear=year, targetMonth=month){
     const targetD=dim(targetYear,targetMonth);
-    // 矯正日の手動設定のみ保持（当番・休み）
-    const kyoseiDaysList=[];
-    for(let d=1;d<=targetD;d++){
-      if(kyoseiInfo(targetYear,targetMonth,d)) kyoseiDaysList.push(d);
-    }
-
-    const kyoseiAssignedManual={};
-    const kyoseiRestManual={};
-    staff.filter(s=>s.active).forEach(s=>{
-      kyoseiDaysList.forEach(d=>{
-        const sh=shifts[`${s.id}_${d}`];
-        if(sh==="矯正当番_土"||sh==="矯正当番_木"){
-          kyoseiAssignedManual[d]=s.id;
-        } else if(sh==="休み"){
-          if(!kyoseiRestManual[s.id]) kyoseiRestManual[s.id]=new Set();
-          kyoseiRestManual[s.id].add(d);
-        }
-      });
-    });
+    const activeStaff=staff.filter(s=>s.active);
 
     // 対象月の矯正日
     const targetKyoseiDays={};
@@ -995,66 +977,74 @@ export default function App() {
       const ki=kyoseiInfo(targetYear,targetMonth,d);
       if(ki) targetKyoseiDays[d]=ki;
     }
-    // カスタム矯正日も反映（表示中の月のみ）
+    // 表示中の月ならカスタム矯正日も反映
     if(targetYear===year&&targetMonth===month){
       Object.assign(targetKyoseiDays, kyoseiDays);
     }
 
-    // 当月シフト生成
-    const newShifts=autoSchedule(targetYear,targetMonth,staff.filter(s=>s.active),minSt,kyoseiAssignedManual,kyoseiRestManual,targetKyoseiDays);
-
-    // 翌月1〜10日分も生成（11〜10表示モード用）
-    const nextYear=targetMonth===11?targetYear+1:targetYear;
-    const nextMonth=targetMonth===11?0:targetMonth+1;
-    const nextKyoseiDays={};
-    for(let d=1;d<=10;d++){
-      const ki=kyoseiInfo(nextYear,nextMonth,d);
-      if(ki) nextKyoseiDays[d]=ki;
-    }
-    const sNext=autoSchedule(nextYear,nextMonth,staff.filter(s=>s.active),minSt,{},{},nextKyoseiDays);
-
-    // 翌月分はキーを year_month_day 形式に変換
-    const nextConverted={};
-    Object.entries(sNext).forEach(([key,val])=>{
-      const parts=key.split("_");
-      if(parts.length===2){
-        const [sid,d]=parts;
-        if(Number(d)<=10){
-          nextConverted[`${sid}_${nextYear}_${nextMonth}_${d}`]=val;
+    // 矯正日の手動設定を保持
+    const kyoseiAssignedManual={};
+    const kyoseiRestManual={};
+    Object.keys(targetKyoseiDays).forEach(ds=>{
+      const d=Number(ds);
+      activeStaff.forEach(s=>{
+        const sh=shifts[`${s.id}_${d}`];
+        if(sh==="矯正当番_土"||sh==="矯正当番_木") kyoseiAssignedManual[d]=s.id;
+        else if(sh==="休み"){
+          if(!kyoseiRestManual[s.id]) kyoseiRestManual[s.id]=new Set();
+          kyoseiRestManual[s.id].add(d);
         }
+      });
+    });
+
+    // 当月シフト生成
+    const newShifts=autoSchedule(targetYear,targetMonth,activeStaff,minSt,kyoseiAssignedManual,kyoseiRestManual,targetKyoseiDays);
+
+    // 翌月1〜10日分も生成
+    const nxtY=targetMonth===11?targetYear+1:targetYear;
+    const nxtM=targetMonth===11?0:targetMonth+1;
+    const nxtKD={};
+    for(let d=1;d<=10;d++){ const ki=kyoseiInfo(nxtY,nxtM,d); if(ki) nxtKD[d]=ki; }
+    const nxtShifts=autoSchedule(nxtY,nxtM,activeStaff,minSt,{},{},nxtKD);
+
+    // 翌月分を年月付きキーに変換（1〜10日のみ）
+    const nxtConverted={};
+    activeStaff.forEach(s=>{
+      for(let d=1;d<=10;d++){
+        const v=nxtShifts[`${s.id}_${d}`];
+        if(v) nxtConverted[`${s.id}_${nxtY}_${nxtM}_${d}`]=v;
       }
     });
 
-    // 他の月のシフトは保持し、対象月＋翌月1〜10日だけ上書き
+    // 当月分のみ置き換え（他月は保持）
     setShifts(prev=>{
-      const preserved={...prev};
-      Object.keys(preserved).forEach(k=>{
-        if(/^\d+_\d+$/.test(k)) delete preserved[k];
-        const m=k.match(/^(\d+)_(\d+)_(\d+)_(\d+)$/);
-        if(m&&Number(m[2])===nextYear&&Number(m[3])===nextMonth) delete preserved[k];
+      const next={...prev};
+      // 当月キー（staffId_day）を削除
+      activeStaff.forEach(s=>{
+        for(let d=1;d<=targetD;d++) delete next[`${s.id}_${d}`];
       });
-      return {...preserved, ...newShifts, ...nextConverted};
+      // 翌月年月キーを削除
+      activeStaff.forEach(s=>{
+        for(let d=1;d<=10;d++) delete next[`${s.id}_${nxtY}_${nxtM}_${d}`];
+      });
+      return {...next, ...newShifts, ...nxtConverted};
     });
-    if(targetYear===year&&targetMonth===month){
-      toast_("✨ シフトを自動作成しました");
-    }
+    toast_("✨ シフトを自動作成しました");
   }
 
   // 月移動：未入力の月は自動生成
   function changeMonth(newYear, newMonth){
     setYear(newYear);
     setMonth(newMonth);
-    // その月にシフトが1件もなければ自動生成
-    const hasShift=staff.filter(s=>s.active).some(s=>{
-      for(let d=1;d<=dim(newYear,newMonth);d++){
+    const newD=dim(newYear,newMonth);
+    const activeStaff=staff.filter(s=>s.active);
+    const hasShift=activeStaff.some(s=>{
+      for(let d=1;d<=newD;d++){
         if(shifts[`${s.id}_${d}`]||shifts[`${s.id}_${newYear}_${newMonth}_${d}`]) return true;
       }
       return false;
     });
-    if(!hasShift){
-      // stateの更新後に実行されるようsetTimeoutで遅延
-      setTimeout(()=>handleAuto(newYear,newMonth),50);
-    }
+    if(!hasShift) handleAuto(newYear, newMonth);
   }
 
   // 日別・役職別 出勤数（セミナー参加者を除外）
