@@ -1320,121 +1320,6 @@ export default function App() {
           );
         })()}
 
-        {/* コントロール */}
-        {isA&&(
-          <div className="cp">
-            <div className="cpt">⚙️ シフト設定</div>
-            <div style={{display:"flex",gap:14,flexWrap:"wrap",alignItems:"flex-start"}}>
-              <div className="cpg" style={{flex:2,minWidth:260}}>
-                {Object.entries(ROLES).filter(([role])=>role!=="技工士"&&role!=="TC").map(([role,rv])=>(
-                  <div className="cpi" key={role}>
-                    <label><span style={{background:rv.bg,color:rv.color,padding:"1px 4px",borderRadius:3,fontSize:7,fontWeight:800,marginRight:3}}>{role}</span>最低人数</label>
-                    <div className="cpr"><span>出勤</span>
-                      <input type="number" min="0" max="10" className="ni"
-                        value={minSt[role]||0}
-                        onChange={e=>setMinSt(p=>({...p,[role]:Number(e.target.value)}))}/>
-                      <span style={{fontSize:9,color:"#94a3b8"}}>人以上</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="cpi" style={{minWidth:190}}>
-                <label>勤務時間設定（平日）</label>
-                <div className="cpr"><span>開始</span><input type="time" className="ti" value={wh.start} onChange={e=>setWh(p=>({...p,start:e.target.value}))}/></div>
-                <div className="cpr"><span>終了</span><input type="time" className="ti" value={wh.end} onChange={e=>setWh(p=>({...p,end:e.target.value}))}/></div>
-                <div className="cpr"><span>休憩</span>
-                  <input type="number" min="0" max="120" step="15" className="ni" value={wh.breakMin} onChange={e=>setWh(p=>({...p,breakMin:Number(e.target.value)}))}/>
-                  <span style={{fontSize:9,color:"#94a3b8"}}>分</span>
-                </div>
-                <div style={{fontSize:9,color:"#64748b",marginTop:5,fontFamily:"JetBrains Mono,monospace"}}>
-                  1日 {dH}h ／ 月標準 {stdH}h
-                </div>
-              </div>
-              <div className="cpi" style={{minWidth:190}}>
-                <label>勤務時間設定（土曜）</label>
-                <div className="cpr"><span>開始</span><input type="time" className="ti" value={whSat.start} onChange={e=>setWhSat(p=>({...p,start:e.target.value}))}/></div>
-                <div className="cpr"><span>終了</span><input type="time" className="ti" value={whSat.end} onChange={e=>setWhSat(p=>({...p,end:e.target.value}))}/></div>
-                <div className="cpr"><span>休憩</span>
-                  <input type="number" min="0" max="120" step="15" className="ni" value={whSat.breakMin} onChange={e=>setWhSat(p=>({...p,breakMin:Number(e.target.value)}))}/>
-                  <span style={{fontSize:9,color:"#94a3b8"}}>分</span>
-                </div>
-                <div style={{fontSize:9,color:"#64748b",marginTop:5,fontFamily:"JetBrains Mono,monospace"}}>
-                  土曜 {satDH}h／第2土は矯正当番別計算
-                </div>
-              </div>
-              <div style={{display:"flex",flexDirection:"column",gap:6,paddingTop:2}}>
-                <button className="abtn" onClick={handleAuto}>✨ 自動シフト作成</button>
-                <button className="cbtn" onClick={async ()=>{
-                  if(!window.confirm("当月のシフトをクリアします。よろしいですか？")) return;
-                  setShifts({});
-                  setNxtShifts({});
-                  toast_("シフトをクリアしました");
-                }}>🗑 クリア</button>
-                <div style={{fontSize:9,color:"#94a3b8",lineHeight:1.7,padding:"2px 0"}}>
-                  週40h基準 / 週休2日<br/>祝日週は週休3日<br/>矯正当番は自動ローテーション
-                </div>
-              </div>
-            </div>
-
-            {/* 医院休診日設定 */}
-            <div style={{marginTop:14,borderTop:"1px solid #f1f5f9",paddingTop:12}}>
-              <div style={{fontSize:11,fontWeight:800,color:"#b45309",marginBottom:8}}>🏥 医院休診日設定</div>
-              {/* 登録済み休診日 */}
-              <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8}}>
-                {clinicHolidays.length===0&&<span style={{fontSize:11,color:"var(--mut)"}}>登録なし</span>}
-                {clinicHolidays.sort((a,b)=>a.date.localeCompare(b.date)).map(h=>(
-                  <div key={h.date} style={{display:"flex",alignItems:"center",gap:4,
-                    background:"#fef3c7",border:"1.5px solid #fcd34d",borderRadius:7,padding:"3px 8px"}}>
-                    <span style={{fontSize:10,fontWeight:700,color:"#92400e"}}>{h.date.slice(5).replace("-","/")} {h.label}</span>
-                    <button onClick={()=>{setClinicHolidays(ps=>ps.filter(x=>x.date!==h.date));toast_("休診日を削除しました");}}
-                      style={{fontSize:9,padding:"0 4px",border:"none",background:"none",color:"#dc2626",cursor:"pointer",fontWeight:800}}>✕</button>
-                  </div>
-                ))}
-              </div>
-              {/* 追加フォーム */}
-              <div style={{display:"flex",gap:6,alignItems:"flex-end",flexWrap:"wrap"}}>
-                <div>
-                  <div style={{fontSize:9,fontWeight:700,color:"var(--mut)",marginBottom:2}}>日付</div>
-                  <input id="ch-date" type="date"
-                    style={{padding:"5px 8px",border:"1.5px solid #e2e8f0",borderRadius:6,fontSize:11,fontFamily:"inherit"}}/>
-                </div>
-                <div>
-                  <div style={{fontSize:9,fontWeight:700,color:"var(--mut)",marginBottom:2}}>名称（任意）</div>
-                  <input id="ch-label" placeholder="例：お盆休み"
-                    style={{width:110,padding:"5px 8px",border:"1.5px solid #e2e8f0",borderRadius:6,fontSize:11,fontFamily:"inherit"}}/>
-                </div>
-                <button className="svbtn" style={{fontSize:10,padding:"5px 12px"}}
-                  onClick={()=>{
-                    const date=document.getElementById("ch-date").value;
-                    const label=document.getElementById("ch-label").value||"休診";
-                    if(!date){toast_("日付を選択してください");return;}
-                    if(clinicHolidays.some(h=>h.date===date)){toast_("すでに登録されています");return;}
-                    setClinicHolidays(ps=>[...ps,{date,label}]);
-                    toast_(`${date} を休診日に登録しました`);
-                    document.getElementById("ch-date").value="";
-                    document.getElementById("ch-label").value="";
-                  }}>＋ 追加</button>
-                <button style={{fontSize:10,padding:"5px 10px",borderRadius:6,border:"1px solid #e2e8f0",
-                  background:"#f8fafc",color:"#64748b",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}
-                  onClick={()=>{
-                    // お盆・年末年始を一括登録
-                    const y=year;
-                    const presets=[
-                      {date:`${y}-08-13`,label:"お盆休み"},{date:`${y}-08-14`,label:"お盆休み"},
-                      {date:`${y}-08-15`,label:"お盆休み"},{date:`${y}-08-16`,label:"お盆休み"},
-                      {date:`${y}-12-29`,label:"年末休み"},{date:`${y}-12-30`,label:"年末休み"},
-                      {date:`${y}-12-31`,label:"年末休み"},{date:`${y+1}-01-01`,label:"元旦"},
-                      {date:`${y+1}-01-02`,label:"年始休み"},{date:`${y+1}-01-03`,label:"年始休み"},
-                    ];
-                    const newOnes=presets.filter(p=>!clinicHolidays.some(h=>h.date===p.date));
-                    setClinicHolidays(ps=>[...ps,...newOnes]);
-                    toast_(`お盆・年末年始（${newOnes.length}日）を登録しました`);
-                  }}>📅 お盆・年末年始を一括登録</button>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* アラート */}
         {isA&&alerts.length>0&&(
           <div className="alertbar">
@@ -1631,6 +1516,121 @@ export default function App() {
             </tbody>
           </table>
         </div>
+        {/* コントロール */}
+        {isA&&(
+          <div className="cp">
+            <div className="cpt">⚙️ シフト設定</div>
+            <div style={{display:"flex",gap:14,flexWrap:"wrap",alignItems:"flex-start"}}>
+              <div className="cpg" style={{flex:2,minWidth:260}}>
+                {Object.entries(ROLES).filter(([role])=>role!=="技工士"&&role!=="TC").map(([role,rv])=>(
+                  <div className="cpi" key={role}>
+                    <label><span style={{background:rv.bg,color:rv.color,padding:"1px 4px",borderRadius:3,fontSize:7,fontWeight:800,marginRight:3}}>{role}</span>最低人数</label>
+                    <div className="cpr"><span>出勤</span>
+                      <input type="number" min="0" max="10" className="ni"
+                        value={minSt[role]||0}
+                        onChange={e=>setMinSt(p=>({...p,[role]:Number(e.target.value)}))}/>
+                      <span style={{fontSize:9,color:"#94a3b8"}}>人以上</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="cpi" style={{minWidth:190}}>
+                <label>勤務時間設定（平日）</label>
+                <div className="cpr"><span>開始</span><input type="time" className="ti" value={wh.start} onChange={e=>setWh(p=>({...p,start:e.target.value}))}/></div>
+                <div className="cpr"><span>終了</span><input type="time" className="ti" value={wh.end} onChange={e=>setWh(p=>({...p,end:e.target.value}))}/></div>
+                <div className="cpr"><span>休憩</span>
+                  <input type="number" min="0" max="120" step="15" className="ni" value={wh.breakMin} onChange={e=>setWh(p=>({...p,breakMin:Number(e.target.value)}))}/>
+                  <span style={{fontSize:9,color:"#94a3b8"}}>分</span>
+                </div>
+                <div style={{fontSize:9,color:"#64748b",marginTop:5,fontFamily:"JetBrains Mono,monospace"}}>
+                  1日 {dH}h ／ 月標準 {stdH}h
+                </div>
+              </div>
+              <div className="cpi" style={{minWidth:190}}>
+                <label>勤務時間設定（土曜）</label>
+                <div className="cpr"><span>開始</span><input type="time" className="ti" value={whSat.start} onChange={e=>setWhSat(p=>({...p,start:e.target.value}))}/></div>
+                <div className="cpr"><span>終了</span><input type="time" className="ti" value={whSat.end} onChange={e=>setWhSat(p=>({...p,end:e.target.value}))}/></div>
+                <div className="cpr"><span>休憩</span>
+                  <input type="number" min="0" max="120" step="15" className="ni" value={whSat.breakMin} onChange={e=>setWhSat(p=>({...p,breakMin:Number(e.target.value)}))}/>
+                  <span style={{fontSize:9,color:"#94a3b8"}}>分</span>
+                </div>
+                <div style={{fontSize:9,color:"#64748b",marginTop:5,fontFamily:"JetBrains Mono,monospace"}}>
+                  土曜 {satDH}h／第2土は矯正当番別計算
+                </div>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:6,paddingTop:2}}>
+                <button className="abtn" onClick={handleAuto}>✨ 自動シフト作成</button>
+                <button className="cbtn" onClick={async ()=>{
+                  if(!window.confirm("当月のシフトをクリアします。よろしいですか？")) return;
+                  setShifts({});
+                  setNxtShifts({});
+                  toast_("シフトをクリアしました");
+                }}>🗑 クリア</button>
+                <div style={{fontSize:9,color:"#94a3b8",lineHeight:1.7,padding:"2px 0"}}>
+                  週40h基準 / 週休2日<br/>祝日週は週休3日<br/>矯正当番は自動ローテーション
+                </div>
+              </div>
+            </div>
+
+            {/* 医院休診日設定 */}
+            <div style={{marginTop:14,borderTop:"1px solid #f1f5f9",paddingTop:12}}>
+              <div style={{fontSize:11,fontWeight:800,color:"#b45309",marginBottom:8}}>🏥 医院休診日設定</div>
+              {/* 登録済み休診日 */}
+              <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8}}>
+                {clinicHolidays.length===0&&<span style={{fontSize:11,color:"var(--mut)"}}>登録なし</span>}
+                {clinicHolidays.sort((a,b)=>a.date.localeCompare(b.date)).map(h=>(
+                  <div key={h.date} style={{display:"flex",alignItems:"center",gap:4,
+                    background:"#fef3c7",border:"1.5px solid #fcd34d",borderRadius:7,padding:"3px 8px"}}>
+                    <span style={{fontSize:10,fontWeight:700,color:"#92400e"}}>{h.date.slice(5).replace("-","/")} {h.label}</span>
+                    <button onClick={()=>{setClinicHolidays(ps=>ps.filter(x=>x.date!==h.date));toast_("休診日を削除しました");}}
+                      style={{fontSize:9,padding:"0 4px",border:"none",background:"none",color:"#dc2626",cursor:"pointer",fontWeight:800}}>✕</button>
+                  </div>
+                ))}
+              </div>
+              {/* 追加フォーム */}
+              <div style={{display:"flex",gap:6,alignItems:"flex-end",flexWrap:"wrap"}}>
+                <div>
+                  <div style={{fontSize:9,fontWeight:700,color:"var(--mut)",marginBottom:2}}>日付</div>
+                  <input id="ch-date" type="date"
+                    style={{padding:"5px 8px",border:"1.5px solid #e2e8f0",borderRadius:6,fontSize:11,fontFamily:"inherit"}}/>
+                </div>
+                <div>
+                  <div style={{fontSize:9,fontWeight:700,color:"var(--mut)",marginBottom:2}}>名称（任意）</div>
+                  <input id="ch-label" placeholder="例：お盆休み"
+                    style={{width:110,padding:"5px 8px",border:"1.5px solid #e2e8f0",borderRadius:6,fontSize:11,fontFamily:"inherit"}}/>
+                </div>
+                <button className="svbtn" style={{fontSize:10,padding:"5px 12px"}}
+                  onClick={()=>{
+                    const date=document.getElementById("ch-date").value;
+                    const label=document.getElementById("ch-label").value||"休診";
+                    if(!date){toast_("日付を選択してください");return;}
+                    if(clinicHolidays.some(h=>h.date===date)){toast_("すでに登録されています");return;}
+                    setClinicHolidays(ps=>[...ps,{date,label}]);
+                    toast_(`${date} を休診日に登録しました`);
+                    document.getElementById("ch-date").value="";
+                    document.getElementById("ch-label").value="";
+                  }}>＋ 追加</button>
+                <button style={{fontSize:10,padding:"5px 10px",borderRadius:6,border:"1px solid #e2e8f0",
+                  background:"#f8fafc",color:"#64748b",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}
+                  onClick={()=>{
+                    // お盆・年末年始を一括登録
+                    const y=year;
+                    const presets=[
+                      {date:`${y}-08-13`,label:"お盆休み"},{date:`${y}-08-14`,label:"お盆休み"},
+                      {date:`${y}-08-15`,label:"お盆休み"},{date:`${y}-08-16`,label:"お盆休み"},
+                      {date:`${y}-12-29`,label:"年末休み"},{date:`${y}-12-30`,label:"年末休み"},
+                      {date:`${y}-12-31`,label:"年末休み"},{date:`${y+1}-01-01`,label:"元旦"},
+                      {date:`${y+1}-01-02`,label:"年始休み"},{date:`${y+1}-01-03`,label:"年始休み"},
+                    ];
+                    const newOnes=presets.filter(p=>!clinicHolidays.some(h=>h.date===p.date));
+                    setClinicHolidays(ps=>[...ps,...newOnes]);
+                    toast_(`お盆・年末年始（${newOnes.length}日）を登録しました`);
+                  }}>📅 お盆・年末年始を一括登録</button>
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
     );
   };
