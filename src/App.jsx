@@ -264,40 +264,40 @@ function autoSchedule(y,m,staff,minStaff,kyoseiAssignedManual={},kyoseiRestManua
       const isHalfPM=restEntry?.type==="午後";
 
       // 定休（全日）
-      if(restEntry?.type==="全日"){ shifts[`${s.id}_${y}_${m}_${d}`]="休み"; return; }
+      if(restEntry?.type==="全日"){ shifts[`${s.id}_${d}`]="休み"; return; }
 
       // 全日休み（週休割当）
-      if(restDaysSet[s.id].has(d)){ shifts[`${s.id}_${y}_${m}_${d}`]="休み"; return; }
+      if(restDaysSet[s.id].has(d)){ shifts[`${s.id}_${d}`]="休み"; return; }
 
       // 矯正日
       if(ki){
         if(kyoseiAssigned[d]===s.id){
           // 当番：土曜矯正は矯正当番_土、木曜は矯正当番_木
-          shifts[`${s.id}_${y}_${m}_${d}`]=ki.type==="土"?"矯正当番_土":"矯正当番_木";
+          shifts[`${s.id}_${d}`]=ki.type==="土"?"矯正当番_土":"矯正当番_木";
           return;
         }
         if(kyoseiRestManual[s.id]?.has(d)){
-          shifts[`${s.id}_${y}_${m}_${d}`]="休み"; return;
+          shifts[`${s.id}_${d}`]="休み"; return;
         }
         // 矯正日の非当番：半日設定があれば半日、なければ通常出勤
-        if(isHalfAM){ shifts[`${s.id}_${y}_${m}_${d}`]="午前半休"; return; }
-        if(isHalfPM){ shifts[`${s.id}_${y}_${m}_${d}`]="午後半休"; return; }
+        if(isHalfAM){ shifts[`${s.id}_${d}`]="午前半休"; return; }
+        if(isHalfPM){ shifts[`${s.id}_${d}`]="午後半休"; return; }
         if(halfDaysSet[s.id]?.has(d)){
-          shifts[`${s.id}_${y}_${m}_${d}`]=s.id%2===1?"午前半休":"午後半休"; return;
+          shifts[`${s.id}_${d}`]=s.id%2===1?"午前半休":"午後半休"; return;
         }
         // 矯正日非当番の通常出勤（土曜は土曜出勤）
-        shifts[`${s.id}_${y}_${m}_${d}`]=dow===6?"土曜出勤":"出勤"; return;
+        shifts[`${s.id}_${d}`]=dow===6?"土曜出勤":"出勤"; return;
       }
 
       // 通常日（土曜含む）
       if(isHalfAM){
-        shifts[`${s.id}_${y}_${m}_${d}`]="午前半休";
+        shifts[`${s.id}_${d}`]="午前半休";
       } else if(isHalfPM){
-        shifts[`${s.id}_${y}_${m}_${d}`]="午後半休";
+        shifts[`${s.id}_${d}`]="午後半休";
       } else if(halfDaysSet[s.id]?.has(d)){
-        shifts[`${s.id}_${y}_${m}_${d}`]=s.id%2===1?"午前半休":"午後半休";
+        shifts[`${s.id}_${d}`]=s.id%2===1?"午前半休":"午後半休";
       } else {
-        shifts[`${s.id}_${y}_${m}_${d}`]=dow===6?"土曜出勤":"出勤";
+        shifts[`${s.id}_${d}`]=dow===6?"土曜出勤":"出勤";
       }
     });
   }
@@ -861,24 +861,14 @@ export default function App() {
   const [year,    setYear]    = useState(today.getFullYear());
   const [month,   setMonth]   = useState(today.getMonth());
   const [staff,   setStaff,   staffSynced]  = useDB("ds_staff",   INIT_STAFF);
-  const [shifts,  setShifts]  = useDB("ds_shifts",  {});
-
-  // 古いキー形式（staffId_day）を新形式（staffId_year_month_day）に自動マイグレーション
-  useEffect(()=>{
-    const oldKeys=Object.keys(shifts).filter(k=>/^\d+_\d+$/.test(k));
-    if(oldKeys.length===0) return;
-    // 古いキーを当月（year/month）の新形式に変換
-    setShifts(prev=>{
-      const next={...prev};
-      oldKeys.forEach(k=>{
-        const [sid,d]=k.split("_");
-        const newKey=`${sid}_${year}_${month}_${d}`;
-        if(!next[newKey]) next[newKey]=next[k]; // 新キーがなければ移行
-        delete next[k]; // 古いキーを削除
-      });
-      return next;
-    });
-  },[Object.keys(shifts).filter(k=>/^\d+_\d+$/.test(k)).length]);
+  // 月別シフト: ds_shifts_YEAR_MONTH キーで保存
+  const shiftsKey = `ds_shifts_${year}_${month}`;
+  const [shifts,  setShifts,  shiftsSynced] = useDB(shiftsKey, {});
+  // 翌月シフト（11〜10表示モード用）
+  const nxtDispY = month===11?year+1:year;
+  const nxtDispM = month===11?0:month+1;
+  const nxtShiftsKey = `ds_shifts_${nxtDispY}_${nxtDispM}`;
+  const [nxtShifts, setNxtShifts] = useDB(nxtShiftsKey, {});
   const [wishes,  setWishes]  = useDB("ds_wishes",  {});
   const [minSt,   setMinSt]   = useDB("ds_minSt",   DEFAULT_MIN);
   const [wh,      setWh]      = useDB("ds_wh",       DEFAULT_WH);
@@ -913,6 +903,14 @@ export default function App() {
     return ()=>_saveListeners.delete(fn);
   },[]); // staffId for ID/PIN setting modal
   const [calStart, setCalStart] = useDB("ds_calStart", 11); // 1 or 11
+
+  // 月が変わってshiftsが読み込まれた後、空なら自動生成
+  useEffect(()=>{
+    if(!shiftsSynced) return; // まだ読み込み中
+    if(Object.keys(shifts).length===0 && staff.filter(s=>s.active).length>0){
+      handleAuto(year, month);
+    }
+  },[shiftsSynced, shiftsKey]); // shiftsKeyが変わる=月が変わった
 
   // ポップアップ外クリックで閉じる
   useEffect(()=>{
@@ -974,12 +972,10 @@ export default function App() {
     toast_("シフトを更新しました");
   }
 
-  // シフトキー生成: staffId_year_month_day 統一キー
-  function shiftKey(sid,y,m,d){ return `${sid}_${y}_${m}_${d}`; }
-
   function handleAuto(targetYear=year, targetMonth=month){
     const targetD=dim(targetYear,targetMonth);
     const activeStaff=staff.filter(s=>s.active);
+    const isCurrent=(targetYear===year&&targetMonth===month);
 
     // 対象月の矯正日
     const targetKyoseiDays={};
@@ -987,66 +983,68 @@ export default function App() {
       const ki=kyoseiInfo(targetYear,targetMonth,d);
       if(ki) targetKyoseiDays[d]=ki;
     }
-    if(targetYear===year&&targetMonth===month) Object.assign(targetKyoseiDays, kyoseiDays);
+    if(isCurrent) Object.assign(targetKyoseiDays, kyoseiDays);
 
-    // 矯正日の手動設定を保持
+    // 矯正日の手動設定を保持（当月のみ）
     const kyoseiAssignedManual={};
     const kyoseiRestManual={};
-    Object.keys(targetKyoseiDays).forEach(ds=>{
-      const d=Number(ds);
-      activeStaff.forEach(s=>{
-        // 両キー形式で既存シフトを取得
-        const sh=shifts[shiftKey(s.id,targetYear,targetMonth,d)];
-        if(sh==="矯正当番_土"||sh==="矯正当番_木") kyoseiAssignedManual[d]=s.id;
-        else if(sh==="休み"){
-          if(!kyoseiRestManual[s.id]) kyoseiRestManual[s.id]=new Set();
-          kyoseiRestManual[s.id].add(d);
-        }
+    if(isCurrent){
+      Object.keys(targetKyoseiDays).forEach(ds=>{
+        const d=Number(ds);
+        activeStaff.forEach(s=>{
+          const sh=shifts[`${s.id}_${d}`];
+          if(sh==="矯正当番_土"||sh==="矯正当番_木") kyoseiAssignedManual[d]=s.id;
+          else if(sh==="休み"){
+            if(!kyoseiRestManual[s.id]) kyoseiRestManual[s.id]=new Set();
+            kyoseiRestManual[s.id].add(d);
+          }
+        });
       });
-    });
+    }
 
-    // シフト生成（autoScheduleはstaffId_dayキーで返す）
-    const raw=autoSchedule(targetYear,targetMonth,activeStaff,minSt,kyoseiAssignedManual,kyoseiRestManual,targetKyoseiDays);
+    // 当月シフト生成（staffId_day キー）
+    const newShifts=autoSchedule(targetYear,targetMonth,activeStaff,minSt,kyoseiAssignedManual,kyoseiRestManual,targetKyoseiDays);
 
-    // 翌月1〜10日分も生成
-    const nxtY=targetMonth===11?targetYear+1:targetYear;
-    const nxtM=targetMonth===11?0:targetMonth+1;
-    const nxtKD={};
-    for(let d=1;d<=10;d++){ const ki=kyoseiInfo(nxtY,nxtM,d); if(ki) nxtKD[d]=ki; }
-    const nxtRaw=autoSchedule(nxtY,nxtM,activeStaff,minSt,{},{},nxtKD);
-
-    setShifts(prev=>{
-      const next={...prev};
-      // 対象月のキーを削除（staffId_year_month_day 形式のみ）
+    if(isCurrent){
+      // 当月: shiftsに保存
+      setShifts(newShifts);
+      // 翌月1〜10日も生成してnxtShiftsに保存
+      const nxtKD={};
+      for(let d=1;d<=10;d++){ const ki=kyoseiInfo(nxtDispY,nxtDispM,d); if(ki) nxtKD[d]=ki; }
+      const nxtNew=autoSchedule(nxtDispY,nxtDispM,activeStaff,minSt,{},{},nxtKD);
+      // nxtShiftsは1〜10日分のみ
+      const nxtOnly={};
       activeStaff.forEach(s=>{
-        for(let d=1;d<=targetD;d++) delete next[`${s.id}_${targetYear}_${targetMonth}_${d}`];
-        for(let d=1;d<=10;d++) delete next[`${s.id}_${nxtY}_${nxtM}_${d}`];
+        for(let d=1;d<=10;d++) if(nxtNew[`${s.id}_${d}`]) nxtOnly[`${s.id}_${d}`]=nxtNew[`${s.id}_${d}`];
       });
-      // 新シフトをマージ（autoScheduleが既にy_m_dキーで返す）
-      return {...next, ...raw, ...Object.fromEntries(
-        activeStaff.flatMap(s=>
-          Array.from({length:10},(_,i)=>i+1)
-            .filter(d=>nxtRaw[`${s.id}_${nxtY}_${nxtM}_${d}`])
-            .map(d=>[`${s.id}_${nxtY}_${nxtM}_${d}`, nxtRaw[`${s.id}_${nxtY}_${nxtM}_${d}`]])
-        )
-      )};
-    });
+      setNxtShifts(nxtOnly);
+    } else {
+      // 別月の場合: そのキーのDBを直接更新
+      const key=`ds_shifts_${targetYear}_${targetMonth}`;
+      try{ localStorage.setItem(key, JSON.stringify(newShifts)); }catch{}
+      sbSet(key, newShifts);
+      // 翌月1〜10日も生成
+      const tNxtY=targetMonth===11?targetYear+1:targetYear;
+      const tNxtM=targetMonth===11?0:targetMonth+1;
+      const nxtKD={};
+      for(let d=1;d<=10;d++){ const ki=kyoseiInfo(tNxtY,tNxtM,d); if(ki) nxtKD[d]=ki; }
+      const nxtNew=autoSchedule(tNxtY,tNxtM,activeStaff,minSt,{},{},nxtKD);
+      const nxtOnly={};
+      activeStaff.forEach(s=>{
+        for(let d=1;d<=10;d++) if(nxtNew[`${s.id}_${d}`]) nxtOnly[`${s.id}_${d}`]=nxtNew[`${s.id}_${d}`];
+      });
+      const nxtKey=`ds_shifts_${tNxtY}_${tNxtM}`;
+      try{ localStorage.setItem(nxtKey, JSON.stringify(nxtOnly)); }catch{}
+      sbSet(nxtKey, nxtOnly);
+    }
     toast_("✨ シフトを自動作成しました");
   }
-
   // 月移動：未入力の月は自動生成
   function changeMonth(newYear, newMonth){
     setYear(newYear);
     setMonth(newMonth);
-    const newD=dim(newYear,newMonth);
-    const activeStaff=staff.filter(s=>s.active);
-    const hasShift=activeStaff.some(s=>{
-      for(let d=1;d<=newD;d++){
-        if(shifts[shiftKey(s.id,newYear,newMonth,d)]) return true;
-      }
-      return false;
-    });
-    if(!hasShift) handleAuto(newYear, newMonth);
+    // shiftsは新月のuseDBが読み込まれるまで待つ必要があるため
+    // useEffectで空かどうかチェックして自動生成
   }
 
   // 日別・役職別 出勤数（セミナー参加者を除外）
@@ -1063,7 +1061,7 @@ export default function App() {
       map[d]={};
       Object.keys(ROLES).forEach(role=>{
         map[d][role]=staff.filter(s=>s.role===role&&s.active&&!semStaff.has(s.id)).filter(s=>{
-          const sh=shifts[`${s.id}_${year}_${month}_${d}`];
+          const sh=shifts[`${s.id}_${d}`];
           return sh&&sh!=="休み"&&sh!=="有給";
         }).length;
       });
@@ -1077,7 +1075,7 @@ export default function App() {
     staff.forEach(s=>{
       let h=0;
       for(let d=1;d<=D;d++){
-        const sh=shifts[`${s.id}_${year}_${month}_${d}`];
+        const sh=shifts[`${s.id}_${d}`];
         if(sh&&SHIFT_TYPES[sh]) h+=SHIFT_TYPES[sh].hours;
       }
       map[s.id]=Math.round(h*10)/10;
@@ -1228,7 +1226,7 @@ export default function App() {
               {Object.entries(kyoseiDays).map(([d,ki])=>{
                 const assignedId=autoSchedule(year,month,active,minSt)[`_kyosei_${d}`];
                 // 担当者を shifts から探す
-                const tBan=active.find(s=>shifts[`${s.id}_${year}_${month}_${d}`]==="矯正当番_土"||shifts[`${s.id}_${year}_${month}_${d}`]==="矯正当番_木");
+                const tBan=active.find(s=>shifts[`${s.id}_${d}`]==="矯正当番_土"||shifts[`${s.id}_${d}`]==="矯正当番_木");
                 return (
                   <div className="kinfo-item" key={d}>
                     <strong>{month+1}/{d}（{ki.label}）</strong><br/>
@@ -1270,7 +1268,7 @@ export default function App() {
                   <div>
                     <div style={{fontSize:9,fontWeight:800,color:"#065f46",marginBottom:4}}>🦷 矯正診療日</div>
                     {kyoseiList.map(([d,ki])=>{
-                      const tBan=active.find(s=>shifts[`${s.id}_${year}_${month}_${d}`]==="矯正当番_土"||shifts[`${s.id}_${year}_${month}_${d}`]==="矯正当番_木");
+                      const tBan=active.find(s=>shifts[`${s.id}_${d}`]==="矯正当番_土"||shifts[`${s.id}_${d}`]==="矯正当番_木");
                       const time=ki.type==="土"?`${kyoseiTime.sat.start}〜${kyoseiTime.sat.end}`:`${kyoseiTime.thu.start}〜${kyoseiTime.thu.end}`;
                       return (
                         <div key={d} style={{marginBottom:2,color:"#047857"}}>
@@ -1364,23 +1362,8 @@ export default function App() {
                 <button className="abtn" onClick={handleAuto}>✨ 自動シフト作成</button>
                 <button className="cbtn" onClick={async ()=>{
                   if(!window.confirm("当月のシフトをクリアします。よろしいですか？")) return;
-                  // 全シフトキーから当月・翌月分を削除
-                  const nxtY=month===11?year+1:year;
-                  const nxtM=month===11?0:month+1;
-                  setShifts(prev=>{
-                    const next={...prev};
-                    Object.keys(next).forEach(k=>{
-                      const parts=k.split("_");
-                      // staffId_year_month_day 形式（4パーツ）
-                      if(parts.length===4){
-                        const ky=Number(parts[1]),km=Number(parts[2]);
-                        if((ky===year&&km===month)||(ky===nxtY&&km===nxtM)) delete next[k];
-                      }
-                      // 旧形式 staffId_day（2パーツ）も削除
-                      if(parts.length===2) delete next[k];
-                    });
-                    return next;
-                  });
+                  setShifts({});
+                  setNxtShifts({});
                   toast_("シフトをクリアしました");
                 }}>🗑 クリア</button>
                 <div style={{fontSize:9,color:"#94a3b8",lineHeight:1.7,padding:"2px 0"}}>
@@ -1573,7 +1556,7 @@ export default function App() {
                         const hol=isClinicHoliday(y,m,d);
                         const ki=m===month?kyoseiDays[d]:null;
                         const isOff = hol || dow === 0; // 日曜・祝日
-                        const sh = isOff ? null : (shifts[`${s.id}_${y}_${m}_${d}`]);
+                        const sh = isOff ? null : ((y===year&&m===month)?shifts[`${s.id}_${d}`]:nxtShifts[`${s.id}_${d}`]);
                         const ws = isOff ? null : wishes[`${s.id}_${d}`];
                         const st=SHIFT_TYPES[sh];
                         const inSeminar=!isOff&&seminars.some(sm=>{
@@ -1736,7 +1719,7 @@ export default function App() {
         const ki=kyoseiDays[d];
         if(ki){
           const tban=staff.filter(s=>s.active).find(s=>
-            shifts[`${s.id}_${year}_${month}_${d}`]==="矯正当番_土"||shifts[`${s.id}_${year}_${month}_${d}`]==="矯正当番_木"
+            shifts[`${s.id}_${d}`]==="矯正当番_土"||shifts[`${s.id}_${d}`]==="矯正当番_木"
           );
           res.push({day:d,ki,tban});
         }
@@ -1869,7 +1852,7 @@ export default function App() {
             {schedule.map(({day,ki,tban})=>{
               const allActive=staff.filter(s=>s.active);
               const dow=new Date(year,month,day).getDay();
-              const currentRest=allActive.filter(s=>shifts[`${s.id}_${year}_${month}_${day}`]==="休み").map(s=>s.id);
+              const currentRest=allActive.filter(s=>shifts[`${s.id}_${day}`]==="休み").map(s=>s.id);
               return (
                 <div key={day} style={{background:"#f8fafc",border:"1px solid #e2e8f0",
                   borderRadius:10,padding:"12px 14px",marginBottom:10}}>
@@ -2778,7 +2761,7 @@ export default function App() {
           for(let d=1;d<=D;d++){
             const dow=new Date(year,month,d).getDay();
             if(dow===0||isClinicHoliday(year,month,d)) continue;
-            const sh=shifts[`${s.id}_${year}_${month}_${d}`]||null;
+            const sh=shifts[`${s.id}_${d}`]||null;
             entries.push({d,dow,sh});
           }
           const workDays=entries.filter(e=>e.sh&&e.sh!=="休み"&&e.sh!=="有給");
@@ -2850,7 +2833,7 @@ export default function App() {
               {(()=>{
                 const d=modal.day; const m=modal.month??month; const y=modal.year||year;
                 const restPeople=staff.filter(s=>s.active&&s.id!==modal.staffId&&
-                  (shifts[`${s.id}_${year}_${month}_${d}`]==="休み"||shifts[`${s.id}_${year}_${month}_${d}`]==="有給")
+                  (shifts[`${s.id}_${d}`]==="休み"||shifts[`${s.id}_${d}`]==="有給")
                 );
                 if(restPeople.length===0) return null;
                 return (
