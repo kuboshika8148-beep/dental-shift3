@@ -221,7 +221,14 @@ function autoSchedule(y,m,staff,minStaff,kyoseiAssignedManual={},kyoseiRestManua
       const candidates=[...sats,...rotated];
 
       // 全日休みを追加
-      const extraFullNeeded=Math.max(0, fullDaysNeeded-fixedRestDays.length);
+      // 端数週対策：営業日が少ない週は休みを取りすぎないよう上限を設ける
+      // （例: 月・火の2日しかない週で週休2日を適用すると全員休みになる）
+      const workabledays = flexible.length + fixedRestDays.length; // その週の実質営業日数
+      const maxRestThisWeek = Math.max(0, workabledays - 1); // 最低1日は出勤
+      const extraFullNeeded = Math.min(
+        Math.max(0, fullDaysNeeded - fixedRestDays.length),
+        Math.max(0, maxRestThisWeek - fixedRestDays.length)
+      );
       let taken=0;
       for(const d of candidates){
         if(taken>=extraFullNeeded) break;
@@ -806,10 +813,14 @@ async function sbSet(key, value) {
   } catch {}
 }
 
+// 保存中カウンター（グローバル）
+let _pendingSaves = 0;
+const _saveListeners = new Set();
+function _notifySave(n){ _pendingSaves=n; _saveListeners.forEach(fn=>fn(n)); }
+
 // ─── ストレージhook: 起動時にSupabaseから読み込み、更新時にSupabaseへ保存 ───
 function useDB(key, init) {
   const initVal = typeof init === "function" ? init() : init;
-  // まずlocalStorageから即座に初期値を取得（画面が素早く表示される）
   const [val, setVal] = useState(() => {
     try {
       const s = localStorage.getItem(key);
@@ -818,7 +829,6 @@ function useDB(key, init) {
   });
   const [synced, setSynced] = useState(false);
 
-  // 起動時にSupabaseから最新データを取得
   useEffect(() => {
     sbGet(key).then(remote => {
       if (remote !== null) {
@@ -833,7 +843,9 @@ function useDB(key, init) {
     setVal(prev => {
       const next = typeof v === "function" ? v(prev) : v;
       try { localStorage.setItem(key, JSON.stringify(next)); } catch {}
-      sbSet(key, next); // 非同期でSupabaseに保存
+      // 保存中カウントを増やし、完了後に減らす
+      _notifySave(_pendingSaves + 1);
+      sbSet(key, next).finally(() => _notifySave(Math.max(0, _pendingSaves - 1)));
       return next;
     });
   };
@@ -919,17 +931,29 @@ export default function App() {
     return map;
   },[year,month,D,extraKyosei,deletedKyosei]);
 
-  function applyShift(sid,day,type){
-    const key=`${sid}_${day}`;
+  function applyShift(sid, day, type, y=year, m=month){
+    // 翌月分は年月付きキー、当月分は従来キー
+    const isCurrentMonth = (y===year && m===month);
+    const key = isCurrentMonth ? `${sid}_${day}` : `${sid}_${y}_${m}_${day}`;
+    const legacyKey = `${sid}_${day}`; // 当月の従来キー
     setShifts(prev=>{
       const next={...prev};
-      if(prev[key]==="有給"&&type!=="有給")
+      const cur = prev[key] ?? prev[legacyKey];
+      if(cur==="有給"&&type!=="有給")
         setStaff(ps=>ps.map(s=>s.id===sid?{...s,used:Math.max(0,s.used-1)}:s));
-      if(type===null) delete next[key]; else next[key]=type;
+      if(type===null){
+        delete next[key];
+        delete next[legacyKey];
+      } else {
+        next[key]=type;
+      }
       return next;
     });
-    if(type==="有給"&&shifts[`${sid}_${day}`]!=="有給")
-      setStaff(ps=>ps.map(s=>s.id===sid?{...s,used:Math.min(s.leave,s.used+1)}:s));
+    if(type==="有給"){
+      const cur = shifts[key] ?? shifts[legacyKey];
+      if(cur!=="有給")
+        setStaff(ps=>ps.map(s=>s.id===sid?{...s,used:Math.min(s.leave,s.used+1)}:s));
+    }
     setModal(null);
     toast_("シフトを更新しました");
   }
@@ -2628,8 +2652,17 @@ export default function App() {
             ))}
           </nav>
           <div className="hr">
-            {!staffSynced&&<span style={{fontSize:9,color:"rgba(255,255,255,.5)",animation:"pulse 1s infinite"}}>☁ 同期中…</span>}
-            {staffSynced&&<span style={{fontSize:9,color:"rgba(255,255,255,.4)"}}>☁ 保存済</span>}
+            {(()=>{
+              const [pending, setPending] = useState(0);
+              useEffect(()=>{
+                const fn=(n)=>setPending(n);
+                _saveListeners.add(fn);
+                return ()=>_saveListeners.delete(fn);
+              },[]);
+              if(pending>0) return <span style={{fontSize:9,color:"#fcd34d",animation:"pulse 1s infinite"}}>💾 保存中…</span>;
+              if(!staffSynced) return <span style={{fontSize:9,color:"rgba(255,255,255,.5)"}}>☁ 同期中…</span>;
+              return <span style={{fontSize:9,color:"rgba(255,255,255,.4)"}}>☁ 保存済</span>;
+            })()}
             {isA&&alerts.length>0&&<span className="halert red" onClick={()=>setTab("shift")}>⚠ 不足{alerts.length}件</span>}
             {isA&&overAlerts.length>0&&<span className="halert ora" onClick={()=>setTab("flex")}>🕐 超過{overAlerts.length}名</span>}
             <span style={{color:"rgba(255,255,255,.6)",fontSize:11}}>{user.name}</span>
@@ -2673,12 +2706,12 @@ export default function App() {
               <div className="mbtns">
                 {Object.entries(SHIFT_TYPES).map(([k,v])=>(
                   <button key={k} className="mbtn" style={{borderColor:v.color,color:v.color}}
-                    onClick={()=>applyShift(modal.staffId,modal.day,k)}>
+                    onClick={()=>applyShift(modal.staffId,modal.day,k,modal.year||year,modal.month??month)}>
                     {v.label}{v.hours>0&&<small>{v.hours}h</small>}
                   </button>
                 ))}
               </div>
-              <button className="mclr" onClick={()=>applyShift(modal.staffId,modal.day,null)}>シフトをクリア</button>
+              <button className="mclr" onClick={()=>applyShift(modal.staffId,modal.day,null,modal.year||year,modal.month??month)}>シフトをクリア</button>
               <button className="mcan" onClick={()=>setModal(null)}>キャンセル</button>
             </div>
           </div>
