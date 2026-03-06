@@ -885,7 +885,15 @@ export default function App() {
   const [semModal, setSemModal] = useState(null);
   const [visits, setVisits] = useDB("ds_visits", []);
   const [visitModal, setVisitModal] = useState(null);
-  const [idModal, setIdModal] = useState(null); // staffId for ID/PIN setting modal
+  const [idModal, setIdModal] = useState(null);
+  const [pendingSaves, setPendingSaves] = useState(0);
+  const [ctxMenu, setCtxMenu] = useState(null); // {staffId, x, y}
+
+  useEffect(()=>{
+    const fn=(n)=>setPendingSaves(n);
+    _saveListeners.add(fn);
+    return ()=>_saveListeners.delete(fn);
+  },[]); // staffId for ID/PIN setting modal
   const [calStart, setCalStart] = useDB("ds_calStart", 11); // 1 or 11
 
   // ポップアップ外クリックで閉じる
@@ -1469,7 +1477,8 @@ export default function App() {
                   </tr>,
                   ...rs.map(s=>(
                     <tr key={s.id}>
-                      <td className="sn">
+                      <td className="sn"
+                        onContextMenu={e=>{e.preventDefault();setCtxMenu({staffId:s.id,staffName:s.name,x:e.clientX,y:e.clientY});}}>
                         <div className="nm">{s.name}</div>
                         <span className="rb" style={{background:rv.bg,color:rv.color}}>{rv.short}</span>
                       </td>
@@ -2652,17 +2661,12 @@ export default function App() {
             ))}
           </nav>
           <div className="hr">
-            {(()=>{
-              const [pending, setPending] = useState(0);
-              useEffect(()=>{
-                const fn=(n)=>setPending(n);
-                _saveListeners.add(fn);
-                return ()=>_saveListeners.delete(fn);
-              },[]);
-              if(pending>0) return <span style={{fontSize:9,color:"#fcd34d",animation:"pulse 1s infinite"}}>💾 保存中…</span>;
-              if(!staffSynced) return <span style={{fontSize:9,color:"rgba(255,255,255,.5)"}}>☁ 同期中…</span>;
-              return <span style={{fontSize:9,color:"rgba(255,255,255,.4)"}}>☁ 保存済</span>;
-            })()}
+            {pendingSaves>0
+              ? <span style={{fontSize:9,color:"#fcd34d"}}>💾 保存中…</span>
+              : !staffSynced
+                ? <span style={{fontSize:9,color:"rgba(255,255,255,.5)"}}>☁ 同期中…</span>
+                : <span style={{fontSize:9,color:"rgba(255,255,255,.4)"}}>☁ 保存済</span>
+            }
             {isA&&alerts.length>0&&<span className="halert red" onClick={()=>setTab("shift")}>⚠ 不足{alerts.length}件</span>}
             {isA&&overAlerts.length>0&&<span className="halert ora" onClick={()=>setTab("flex")}>🕐 超過{overAlerts.length}名</span>}
             <span style={{color:"rgba(255,255,255,.6)",fontSize:11}}>{user.name}</span>
@@ -2679,6 +2683,75 @@ export default function App() {
           {tab==="wish"   && WishTab()}
           {tab==="staff"  && isA && StaffTab()}
         </main>
+
+        {/* 右クリックコンテキストメニュー */}
+        {ctxMenu&&(()=>{
+          const s=staff.find(st=>st.id===ctxMenu.staffId);
+          if(!s) return null;
+          const DAYS_JP2=["日","月","火","水","木","金","土"];
+          // 当月の全営業日を集める（日曜・院内休診除く）
+          const entries=[];
+          for(let d=1;d<=D;d++){
+            const dow=new Date(year,month,d).getDay();
+            if(dow===0||isClinicHoliday(year,month,d)) continue;
+            const sh=shifts[`${s.id}_${d}`]||null;
+            entries.push({d,dow,sh});
+          }
+          const workDays=entries.filter(e=>e.sh&&e.sh!=="休み"&&e.sh!=="有給");
+          const restDays=entries.filter(e=>e.sh==="休み"||e.sh==="有給");
+          const noShift=entries.filter(e=>!e.sh);
+
+          // メニューが画面からはみ出さないよう位置調整
+          const menuW=220, menuH=Math.min(400, 80+entries.length*18);
+          const x=Math.min(ctxMenu.x, window.innerWidth-menuW-8);
+          const y=Math.min(ctxMenu.y, window.innerHeight-menuH-8);
+
+          return (
+            <div style={{position:"fixed",inset:0,zIndex:2000}} onClick={()=>setCtxMenu(null)} onContextMenu={e=>{e.preventDefault();setCtxMenu(null);}}>
+              <div style={{position:"absolute",left:x,top:y,width:menuW,
+                background:"#fff",borderRadius:12,boxShadow:"0 8px 32px rgba(0,0,0,.18)",
+                border:"1px solid #e2e8f0",overflow:"hidden",fontSize:11}}
+                onClick={e=>e.stopPropagation()}>
+                {/* ヘッダー */}
+                <div style={{padding:"10px 14px",background:"#0f4c8a",color:"#fff"}}>
+                  <div style={{fontWeight:800,fontSize:13}}>{s.name}</div>
+                  <div style={{fontSize:9,opacity:.8,marginTop:2}}>
+                    {year}/{month+1}月 — 出勤{workDays.length}日 / 休み{restDays.length}日
+                  </div>
+                </div>
+                {/* 一覧 */}
+                <div style={{maxHeight:320,overflowY:"auto",padding:"6px 0"}}>
+                  {entries.map(({d,dow,sh})=>{
+                    const isSun=dow===0;
+                    const label=sh?SHIFT_TYPES[sh]?.label??sh:null;
+                    const isRest=sh==="休み";
+                    const isPaid=sh==="有給";
+                    const isWork=sh&&!isRest&&!isPaid;
+                    const dotColor=isPaid?"#d97706":isRest?"#9ca3af":isWork?"#1d4ed8":"#e2e8f0";
+                    return (
+                      <div key={d} style={{display:"flex",alignItems:"center",gap:8,
+                        padding:"3px 14px",
+                        background:isPaid?"#fffbeb":isRest?"#f9fafb":"transparent"}}>
+                        <span style={{width:6,height:6,borderRadius:"50%",background:dotColor,flexShrink:0,display:"inline-block"}}/>
+                        <span style={{color:"#64748b",minWidth:52,fontFamily:"JetBrains Mono,monospace",fontSize:10}}>
+                          {month+1}/{d}（{DAYS_JP2[dow]}）
+                        </span>
+                        <span style={{fontWeight:700,color:isPaid?"#d97706":isRest?"#9ca3af":isWork?"#1d4ed8":"#cbd5e1",fontSize:10}}>
+                          {isPaid?"有給":isRest?"休み":label??"—"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{padding:"6px 14px",borderTop:"1px solid #e2e8f0",textAlign:"right"}}>
+                  <button onClick={()=>setCtxMenu(null)}
+                    style={{fontSize:10,padding:"3px 10px",borderRadius:6,border:"1px solid #e2e8f0",
+                      background:"#f8fafc",cursor:"pointer",fontFamily:"inherit"}}>閉じる</button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {modal&&isA&&(
           <div className="ov" onClick={()=>setModal(null)}>
