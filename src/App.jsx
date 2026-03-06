@@ -987,9 +987,94 @@ export default function App() {
         }
       });
     });
-    const s=autoSchedule(year,month,staff.filter(s=>s.active),minSt,kyoseiAssignedManual,kyoseiRestManual,kyoseiDays);
-    setShifts(s);
-    toast_("✨ シフトを自動作成しました");
+  function handleAuto(targetYear=year, targetMonth=month){
+    const targetD=dim(targetYear,targetMonth);
+    // 矯正日の手動設定のみ保持（当番・休み）
+    const kyoseiDaysList=[];
+    for(let d=1;d<=targetD;d++){
+      if(kyoseiInfo(targetYear,targetMonth,d)) kyoseiDaysList.push(d);
+    }
+
+    const kyoseiAssignedManual={};
+    const kyoseiRestManual={};
+    staff.filter(s=>s.active).forEach(s=>{
+      kyoseiDaysList.forEach(d=>{
+        const sh=shifts[`${s.id}_${d}`];
+        if(sh==="矯正当番_土"||sh==="矯正当番_木"){
+          kyoseiAssignedManual[d]=s.id;
+        } else if(sh==="休み"){
+          if(!kyoseiRestManual[s.id]) kyoseiRestManual[s.id]=new Set();
+          kyoseiRestManual[s.id].add(d);
+        }
+      });
+    });
+
+    // 対象月の矯正日
+    const targetKyoseiDays={};
+    for(let d=1;d<=targetD;d++){
+      const ki=kyoseiInfo(targetYear,targetMonth,d);
+      if(ki) targetKyoseiDays[d]=ki;
+    }
+    // カスタム矯正日も反映（表示中の月のみ）
+    if(targetYear===year&&targetMonth===month){
+      Object.assign(targetKyoseiDays, kyoseiDays);
+    }
+
+    // 当月シフト生成
+    const newShifts=autoSchedule(targetYear,targetMonth,staff.filter(s=>s.active),minSt,kyoseiAssignedManual,kyoseiRestManual,targetKyoseiDays);
+
+    // 翌月1〜10日分も生成（11〜10表示モード用）
+    const nextYear=targetMonth===11?targetYear+1:targetYear;
+    const nextMonth=targetMonth===11?0:targetMonth+1;
+    const nextKyoseiDays={};
+    for(let d=1;d<=10;d++){
+      const ki=kyoseiInfo(nextYear,nextMonth,d);
+      if(ki) nextKyoseiDays[d]=ki;
+    }
+    const sNext=autoSchedule(nextYear,nextMonth,staff.filter(s=>s.active),minSt,{},{},nextKyoseiDays);
+
+    // 翌月分はキーを year_month_day 形式に変換
+    const nextConverted={};
+    Object.entries(sNext).forEach(([key,val])=>{
+      const parts=key.split("_");
+      if(parts.length===2){
+        const [sid,d]=parts;
+        if(Number(d)<=10){
+          nextConverted[`${sid}_${nextYear}_${nextMonth}_${d}`]=val;
+        }
+      }
+    });
+
+    // 他の月のシフトは保持し、対象月＋翌月1〜10日だけ上書き
+    setShifts(prev=>{
+      const preserved={...prev};
+      Object.keys(preserved).forEach(k=>{
+        if(/^\d+_\d+$/.test(k)) delete preserved[k];
+        const m=k.match(/^(\d+)_(\d+)_(\d+)_(\d+)$/);
+        if(m&&Number(m[2])===nextYear&&Number(m[3])===nextMonth) delete preserved[k];
+      });
+      return {...preserved, ...newShifts, ...nextConverted};
+    });
+    if(targetYear===year&&targetMonth===month){
+      toast_("✨ シフトを自動作成しました");
+    }
+  }
+
+  // 月移動：未入力の月は自動生成
+  function changeMonth(newYear, newMonth){
+    setYear(newYear);
+    setMonth(newMonth);
+    // その月にシフトが1件もなければ自動生成
+    const hasShift=staff.filter(s=>s.active).some(s=>{
+      for(let d=1;d<=dim(newYear,newMonth);d++){
+        if(shifts[`${s.id}_${d}`]||shifts[`${s.id}_${newYear}_${newMonth}_${d}`]) return true;
+      }
+      return false;
+    });
+    if(!hasShift){
+      // stateの更新後に実行されるようsetTimeoutで遅延
+      setTimeout(()=>handleAuto(newYear,newMonth),50);
+    }
   }
 
   // 日別・役職別 出勤数（セミナー参加者を除外）
@@ -1078,10 +1163,17 @@ export default function App() {
           <div className="ptitle">シフト表 <small>{calStart===11?`${year}年${month+1}月11日〜${month===11?year+1:year}年${month===11?1:month+2}月10日`:`${year}年${month+1}月`}</small></div>
           <div style={{display:"flex",gap:7,alignItems:"center",flexWrap:"wrap"}}>
             <div className="mnav">
-              <button onClick={()=>{if(month===0){setMonth(11);setYear(y=>y-1);}else setMonth(m=>m-1);}}>‹</button>
+              <button onClick={()=>changeMonth(month===0?year-1:year, month===0?11:month-1)}>‹</button>
               <span className="mlbl">{year}/{String(month+1).padStart(2,"0")}</span>
-              <button onClick={()=>{if(month===11){setMonth(0);setYear(y=>y+1);}else setMonth(m=>m+1);}}>›</button>
+              <button onClick={()=>changeMonth(month===11?year+1:year, month===11?0:month+1)}>›</button>
             </div>
+            {/* 今月ボタン */}
+            {(year!==today.getFullYear()||month!==today.getMonth())&&(
+              <button className="pbtn" style={{background:"#f0fdf4",color:"#16a34a",border:"1px solid #86efac",fontWeight:800}}
+                onClick={()=>changeMonth(today.getFullYear(),today.getMonth())}>
+                今月
+              </button>
+            )}
             {isA&&<button className="pbtn" style={{background:"#7e22ce",color:"#fff"}} onClick={()=>setSemModal("add")}>🎓 セミナー追加</button>}
             {isA&&<button className="pbtn" style={{background:"#0369a1",color:"#fff"}} onClick={()=>setVisitModal("add")}>🏠 訪問追加</button>}
             {isA&&<button className="pbtn" style={{background:calStart===11?"#f59e0b":"#e2e8f0",color:calStart===11?"#fff":"#374151"}}
@@ -1298,7 +1390,23 @@ export default function App() {
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:6,paddingTop:2}}>
                 <button className="abtn" onClick={handleAuto}>✨ 自動シフト作成</button>
-                <button className="cbtn" onClick={()=>{setShifts({});toast_("シフトをクリアしました");}}>🗑 クリア</button>
+                <button className="cbtn" onClick={()=>{
+                  // 当月分＋翌月分（年月キー付き）をクリア
+                  const nextYear=month===11?year+1:year;
+                  const nextMonth=month===11?0:month+1;
+                  setShifts(prev=>{
+                    const next={...prev};
+                    Object.keys(next).forEach(k=>{
+                      // 当月: staffId_day 形式
+                      if(/^\d+_\d+$/.test(k)) delete next[k];
+                      // 翌月: staffId_year_month_day 形式
+                      const m=k.match(/^(\d+)_(\d+)_(\d+)_(\d+)$/);
+                      if(m&&Number(m[2])===nextYear&&Number(m[3])===nextMonth) delete next[k];
+                    });
+                    return next;
+                  });
+                  toast_("シフトをクリアしました");
+                }}>🗑 クリア</button>
                 <div style={{fontSize:9,color:"#94a3b8",lineHeight:1.7,padding:"2px 0"}}>
                   週40h基準 / 週休2日<br/>祝日週は週休3日<br/>矯正当番は自動ローテーション
                 </div>
@@ -1572,9 +1680,9 @@ export default function App() {
         <div className="ph">
           <div className="ptitle">変形労働時間 <small>{year}年{month+1}月</small></div>
           <div className="mnav">
-            <button onClick={()=>{if(month===0){setMonth(11);setYear(y=>y-1);}else setMonth(m=>m-1);}}>‹</button>
+            <button onClick={()=>changeMonth(month===0?year-1:year, month===0?11:month-1)}>‹</button>
             <span className="mlbl">{year}/{String(month+1).padStart(2,"0")}</span>
-            <button onClick={()=>{if(month===11){setMonth(0);setYear(y=>y+1);}else setMonth(m=>m+1);}}>›</button>
+            <button onClick={()=>changeMonth(month===11?year+1:year, month===11?0:month+1)}>›</button>
           </div>
         </div>
         <div className="fwrap" style={{marginBottom:16}}>
@@ -1960,9 +2068,9 @@ export default function App() {
           <div className="ph">
             <div className="ptitle">希望シフト確認 <small>{year}年{month+1}月</small></div>
             <div className="mnav">
-              <button onClick={()=>{if(month===0){setMonth(11);setYear(y=>y-1);}else setMonth(m=>m-1);}}>‹</button>
+              <button onClick={()=>changeMonth(month===0?year-1:year, month===0?11:month-1)}>‹</button>
               <span className="mlbl">{year}/{String(month+1).padStart(2,"0")}</span>
-              <button onClick={()=>{if(month===11){setMonth(0);setYear(y=>y+1);}else setMonth(m=>m+1);}}>›</button>
+              <button onClick={()=>changeMonth(month===11?year+1:year, month===11?0:month+1)}>›</button>
             </div>
           </div>
           <div className="twrap">
@@ -2007,9 +2115,9 @@ export default function App() {
         <div className="ph">
           <div className="ptitle">希望シフト提出 <small>{year}年{month+1}月</small></div>
           <div className="mnav">
-            <button onClick={()=>{if(month===0){setMonth(11);setYear(y=>y-1);}else setMonth(m=>m-1);}}>‹</button>
+            <button onClick={()=>changeMonth(month===0?year-1:year, month===0?11:month-1)}>‹</button>
             <span className="mlbl">{year}/{String(month+1).padStart(2,"0")}</span>
-            <button onClick={()=>{if(month===11){setMonth(0);setYear(y=>y+1);}else setMonth(m=>m+1);}}>›</button>
+            <button onClick={()=>changeMonth(month===11?year+1:year, month===11?0:month+1)}>›</button>
           </div>
         </div>
         <div className="cp">
