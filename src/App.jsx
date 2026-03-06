@@ -970,17 +970,20 @@ export default function App() {
   },[year,month,D,extraKyosei,deletedKyosei]);
 
   function applyShift(sid, day, type, y=year, m=month){
-    const key = `${sid}_${y}_${m}_${day}`;
-    setShifts(prev=>{
+    // 月別ストレージ: 当月ならshifts, 翌月ならnxtShifts
+    const key=`${sid}_${day}`;
+    const isNxt=(y===nxtDispY&&m===nxtDispM);
+    const setter=isNxt?setNxtShifts:setShifts;
+    setter(prev=>{
       const next={...prev};
-      const cur = prev[key];
+      const cur=prev[key];
       if(cur==="有給"&&type!=="有給")
         setStaff(ps=>ps.map(s=>s.id===sid?{...s,used:Math.max(0,s.used-1)}:s));
       if(type===null) delete next[key];
       else next[key]=type;
       return next;
     });
-    if(type==="有給"&&shifts[key]!=="有給")
+    if(type==="有給"&&(isNxt?nxtShifts:shifts)[key]!=="有給")
       setStaff(ps=>ps.map(s=>s.id===sid?{...s,used:Math.min(s.leave,s.used+1)}:s));
     setModal(null);
     toast_("シフトを更新しました");
@@ -989,7 +992,6 @@ export default function App() {
   function handleAuto(targetYear=year, targetMonth=month){
     const targetD=dim(targetYear,targetMonth);
     const activeStaff=staff.filter(s=>s.active);
-    const isCurrent=(targetYear===year&&targetMonth===month);
 
     // 対象月の矯正日
     const targetKyoseiDays={};
@@ -997,26 +999,24 @@ export default function App() {
       const ki=kyoseiInfo(targetYear,targetMonth,d);
       if(ki) targetKyoseiDays[d]=ki;
     }
-    if(isCurrent) Object.assign(targetKyoseiDays, kyoseiDays);
+    if(targetYear===year&&targetMonth===month) Object.assign(targetKyoseiDays, kyoseiDays);
 
-    // 矯正日の手動設定を保持（当月のみ）
+    // 矯正日の手動設定を保持
     const kyoseiAssignedManual={};
     const kyoseiRestManual={};
-    if(isCurrent){
-      Object.keys(targetKyoseiDays).forEach(ds=>{
-        const d=Number(ds);
-        activeStaff.forEach(s=>{
-          const sh=shifts[`${s.id}_${d}`];
-          if(sh==="矯正当番_土"||sh==="矯正当番_木") kyoseiAssignedManual[d]=s.id;
-          else if(sh==="休み"){
-            if(!kyoseiRestManual[s.id]) kyoseiRestManual[s.id]=new Set();
-            kyoseiRestManual[s.id].add(d);
-          }
-        });
+    Object.keys(targetKyoseiDays).forEach(ds=>{
+      const d=Number(ds);
+      activeStaff.forEach(s=>{
+        const sh=shifts[`${s.id}_${d}`];
+        if(sh==="矯正当番_土"||sh==="矯正当番_木") kyoseiAssignedManual[d]=s.id;
+        else if(sh==="休み"){
+          if(!kyoseiRestManual[s.id]) kyoseiRestManual[s.id]=new Set();
+          kyoseiRestManual[s.id].add(d);
+        }
       });
-    }
+    });
 
-    // シフト生成（staffId_day キー）
+    // シフト生成
     const newShifts=autoSchedule(targetYear,targetMonth,activeStaff,minSt,kyoseiAssignedManual,kyoseiRestManual,targetKyoseiDays);
 
     // 翌月1〜10日も生成
@@ -1030,7 +1030,7 @@ export default function App() {
       for(let d=1;d<=10;d++) if(nxtNew[`${s.id}_${d}`]) nxtOnly[`${s.id}_${d}`]=nxtNew[`${s.id}_${d}`];
     });
 
-    // localStorageとSupabaseに直接保存（setShiftsはkeyが一致しないと反映されないため）
+    // localStorageに保存
     const tKey=`ds_shifts_${targetYear}_${targetMonth}`;
     const nKey=`ds_shifts_${tNxtY}_${tNxtM}`;
     try{ localStorage.setItem(tKey, JSON.stringify(newShifts)); }catch{}
@@ -1039,14 +1039,10 @@ export default function App() {
     Promise.all([sbSet(tKey,newShifts), sbSet(nKey,nxtOnly)])
       .finally(()=>_notifySave(Math.max(0,_pendingSaves-1)));
 
-    // 表示中の月ならstateも更新（即時反映）
-    if(targetYear===year && targetMonth===month){
-      setShifts(newShifts);
-      setNxtShifts(nxtOnly);
-    } else {
-      // 別月の場合はuseDBがlocalStorageから再読み込みするようkeyを変えてトリガー
-      // 自動生成後にその月に移動すればlocalStorageから読み込まれる
-    }
+    // 表示中の月ならstateを即時更新
+    setShifts(prev=>targetYear===year&&targetMonth===month?newShifts:prev);
+    setNxtShifts(prev=>targetYear===year&&targetMonth===month?nxtOnly:prev);
+
     toast_("✨ シフトを自動作成しました");
   }
   // 月移動：未入力の月は自動生成
