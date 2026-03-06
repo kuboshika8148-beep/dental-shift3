@@ -833,17 +833,20 @@ function useDB(key, init) {
   useEffect(() => {
     // keyが変わったらlocalStorageから即時読み込み＆syncedリセット
     setSynced(false);
+    let cancelled = false;
     try {
       const s = localStorage.getItem(key);
       setVal(s ? JSON.parse(s) : (typeof init === "function" ? init() : init));
     } catch {}
     sbGet(key).then(remote => {
-      if (remote !== null) {
+      if (cancelled) return;
+      if (remote !== null && Object.keys(remote).length > 0) {
         setVal(remote);
         try { localStorage.setItem(key, JSON.stringify(remote)); } catch {}
       }
       setSynced(true);
     });
+    return () => { cancelled = true; };
   }, [key]);
 
   const set = (v) => {
@@ -910,21 +913,20 @@ export default function App() {
   },[]); // staffId for ID/PIN setting modal
   const [calStart, setCalStart] = useDB("ds_calStart", 11); // 1 or 11
 
-  // 月が変わってshiftsが読み込まれた後、空なら自動生成
+  // 月が変わったとき、shiftsが空なら自動生成
   useEffect(()=>{
-    if(!shiftsSynced) return;
-    if(Object.keys(shifts).length===0 && staff.filter(s=>s.active).length>0){
-      // localStorageにすでにデータがあれば読み込む（別タブやリロード後）
-      try{
-        const cached=localStorage.getItem(shiftsKey);
-        if(cached){
-          const parsed=JSON.parse(cached);
-          if(Object.keys(parsed).length>0){ setShifts(parsed); return; }
-        }
-      }catch{}
-      handleAuto(year, month);
-    }
-  },[shiftsSynced, shiftsKey]);
+    if(staff.filter(s=>s.active).length===0) return;
+    // localStorageにキャッシュがあればそれを使う
+    try{
+      const cached=localStorage.getItem(shiftsKey);
+      if(cached){
+        const parsed=JSON.parse(cached);
+        if(Object.keys(parsed).length>0) return; // データあり、生成不要
+      }
+    }catch{}
+    // キャッシュなし→自動生成
+    handleAuto(year, month);
+  },[shiftsKey]);
 
   // ポップアップ外クリックで閉じる
   useEffect(()=>{
@@ -1039,9 +1041,9 @@ export default function App() {
     Promise.all([sbSet(tKey,newShifts), sbSet(nKey,nxtOnly)])
       .finally(()=>_notifySave(Math.max(0,_pendingSaves-1)));
 
-    // 表示中の月ならstateを即時更新
-    setShifts(prev=>targetYear===year&&targetMonth===month?newShifts:prev);
-    setNxtShifts(prev=>targetYear===year&&targetMonth===month?nxtOnly:prev);
+    // stateを即時更新
+    setShifts(newShifts);
+    setNxtShifts(nxtOnly);
 
     toast_("✨ シフトを自動作成しました");
   }
