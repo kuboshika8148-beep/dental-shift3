@@ -862,6 +862,23 @@ export default function App() {
   const [month,   setMonth]   = useState(today.getMonth());
   const [staff,   setStaff,   staffSynced]  = useDB("ds_staff",   INIT_STAFF);
   const [shifts,  setShifts]  = useDB("ds_shifts",  {});
+
+  // 古いキー形式（staffId_day）を新形式（staffId_year_month_day）に自動マイグレーション
+  useEffect(()=>{
+    const oldKeys=Object.keys(shifts).filter(k=>/^\d+_\d+$/.test(k));
+    if(oldKeys.length===0) return;
+    // 古いキーを当月（year/month）の新形式に変換
+    setShifts(prev=>{
+      const next={...prev};
+      oldKeys.forEach(k=>{
+        const [sid,d]=k.split("_");
+        const newKey=`${sid}_${year}_${month}_${d}`;
+        if(!next[newKey]) next[newKey]=next[k]; // 新キーがなければ移行
+        delete next[k]; // 古いキーを削除
+      });
+      return next;
+    });
+  },[Object.keys(shifts).filter(k=>/^\d+_\d+$/.test(k)).length]);
   const [wishes,  setWishes]  = useDB("ds_wishes",  {});
   const [minSt,   setMinSt]   = useDB("ds_minSt",   DEFAULT_MIN);
   const [wh,      setWh]      = useDB("ds_wh",       DEFAULT_WH);
@@ -1345,18 +1362,22 @@ export default function App() {
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:6,paddingTop:2}}>
                 <button className="abtn" onClick={handleAuto}>✨ 自動シフト作成</button>
-                <button className="cbtn" onClick={()=>{
-                  // 当月分＋翌月分（年月キー付き）をクリア
-                  const nextYear=month===11?year+1:year;
-                  const nextMonth=month===11?0:month+1;
+                <button className="cbtn" onClick={async ()=>{
+                  if(!window.confirm("当月のシフトをクリアします。よろしいですか？")) return;
+                  // 全シフトキーから当月・翌月分を削除
+                  const nxtY=month===11?year+1:year;
+                  const nxtM=month===11?0:month+1;
                   setShifts(prev=>{
                     const next={...prev};
                     Object.keys(next).forEach(k=>{
-                      // 当月: staffId_day 形式
-                      if(/^\d+_\d+$/.test(k)) delete next[k];
-                      // 翌月: staffId_year_month_day 形式
-                      const m=k.match(/^(\d+)_(\d+)_(\d+)_(\d+)$/);
-                      if(m&&Number(m[2])===nextYear&&Number(m[3])===nextMonth) delete next[k];
+                      const parts=k.split("_");
+                      // staffId_year_month_day 形式（4パーツ）
+                      if(parts.length===4){
+                        const ky=Number(parts[1]),km=Number(parts[2]);
+                        if((ky===year&&km===month)||(ky===nxtY&&km===nxtM)) delete next[k];
+                      }
+                      // 旧形式 staffId_day（2パーツ）も削除
+                      if(parts.length===2) delete next[k];
                     });
                     return next;
                   });
@@ -1848,7 +1869,7 @@ export default function App() {
             {schedule.map(({day,ki,tban})=>{
               const allActive=staff.filter(s=>s.active);
               const dow=new Date(year,month,day).getDay();
-              const currentRest=allActive.filter(s=>shifts[`${s.id}_${day}`]==="休み").map(s=>s.id);
+              const currentRest=allActive.filter(s=>shifts[`${s.id}_${year}_${month}_${day}`]==="休み").map(s=>s.id);
               return (
                 <div key={day} style={{background:"#f8fafc",border:"1px solid #e2e8f0",
                   borderRadius:10,padding:"12px 14px",marginBottom:10}}>
@@ -1867,12 +1888,11 @@ export default function App() {
                           const sid=Number(e.target.value);
                           setShifts(prev=>{
                             const next={...prev};
-                            // 既存の当番シフトをクリア
                             allActive.forEach(s=>{
-                              const k=`${s.id}_${day}`;
+                              const k=`${s.id}_${year}_${month}_${day}`;
                               if(next[k]==="矯正当番_土"||next[k]==="矯正当番_木") delete next[k];
                             });
-                            if(sid) next[`${sid}_${day}`]=ki.type==="土"?"矯正当番_土":"矯正当番_木";
+                            if(sid) next[`${sid}_${year}_${month}_${day}`]=ki.type==="土"?"矯正当番_土":"矯正当番_木";
                             return next;
                           });
                           const s=staff.find(x=>x.id===sid);
