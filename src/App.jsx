@@ -967,26 +967,6 @@ export default function App() {
     toast_("シフトを更新しました");
   }
 
-  function handleAuto(){
-    // 矯正日の手動設定のみ保持（当番・休み）
-    const kyoseiDaysList=[];
-    for(let d=1;d<=D;d++){
-      if(kyoseiInfo(year,month,d)) kyoseiDaysList.push(d);
-    }
-
-    const kyoseiAssignedManual={};
-    const kyoseiRestManual={};
-    staff.filter(s=>s.active).forEach(s=>{
-      kyoseiDaysList.forEach(d=>{
-        const sh=shifts[`${s.id}_${d}`];
-        if(sh==="矯正当番_土"||sh==="矯正当番_木"){
-          kyoseiAssignedManual[d]=s.id;
-        } else if(sh==="休み"){
-          if(!kyoseiRestManual[s.id]) kyoseiRestManual[s.id]=new Set();
-          kyoseiRestManual[s.id].add(d);
-        }
-      });
-    });
   function handleAuto(targetYear=year, targetMonth=month){
     const targetD=dim(targetYear,targetMonth);
     // 矯正日の手動設定のみ保持（当番・休み）
