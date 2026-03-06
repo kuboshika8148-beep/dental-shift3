@@ -216,9 +216,10 @@ function autoSchedule(y,m,staff,minStaff,kyoseiAssignedManual={},kyoseiRestManua
 
       const sats=flexible.filter(d=>new Date(y,m,d).getDay()===6);
       const weekdays=flexible.filter(d=>new Date(y,m,d).getDay()!==6);
-      const offset=(s.id*3+Number(wkStr))%Math.max(weekdays.length,1);
-      const rotated=[...weekdays.slice(offset),...weekdays.slice(0,offset)];
-      const candidates=[...sats,...rotated];
+      // 全日を混ぜてローテーション（土曜を先頭固定にしない）
+      const allFlexible=[...weekdays,...sats]; // 平日→土曜の順で並べ
+      const offset=(s.id*3+Number(wkStr))%Math.max(allFlexible.length,1);
+      const candidates=[...allFlexible.slice(offset),...allFlexible.slice(0,offset)];
 
       // 全日休みを追加
       // 端数週対策：営業日が少ない週は休みを取りすぎないよう上限を設ける
