@@ -1158,41 +1158,35 @@ export default function App() {
           </div>
         </div>
 
-        {/* セミナー・訪問カード（今月分） */}
+        {/* セミナーカード（今月分） */}
         {(()=>{
-          const semItems=seminars.filter(sm=>{const sd=new Date(sm.date);return sd.getFullYear()===year&&sd.getMonth()===month;}).map(sm=>({...sm,_type:"sem"}));
-          const visItems=visits.filter(v=>{const vd=new Date(v.date);return vd.getFullYear()===year&&vd.getMonth()===month;}).map(v=>({...v,_type:"vis"}));
-          const all=[...semItems,...visItems].sort((a,b)=>new Date(a.date)-new Date(b.date));
-          if(all.length===0) return null;
-          return all.map(item=>{
-            const isSem=item._type==="sem";
+          const semItems=seminars.filter(sm=>{const sd=new Date(sm.date);return sd.getFullYear()===year&&sd.getMonth()===month;}).sort((a,b)=>new Date(a.date)-new Date(b.date));
+          if(semItems.length===0) return null;
+          return semItems.map(item=>{
             const d=new Date(item.date).getDate();
             const dow=DAYS_JP[new Date(item.date).getDay()];
             const participants=staff.filter(s=>item.staffIds.includes(s.id));
-            const accent=isSem?"#9333ea":"#0369a1";
-            const bg=isSem?"#faf5ff":"#f0f9ff";
-            const border=isSem?"#d8b4fe":"#7dd3fc";
             return (
-              <div key={item.id} style={{background:bg,border:"1.5px solid "+border,borderRadius:10,
+              <div key={item.id} style={{background:"#faf5ff",border:"1.5px solid #d8b4fe",borderRadius:10,
                 padding:"8px 12px",marginBottom:6,display:"flex",flexDirection:"column",gap:4}}>
                 <div style={{display:"flex",alignItems:"center",gap:5}}>
-                  <span style={{fontSize:13}}>{isSem?"🎓":"🏠"}</span>
-                  <span style={{fontWeight:800,fontSize:11,color:accent}}>{isSem?item.name:(item.name||"訪問")}</span>
+                  <span style={{fontSize:13}}>🎓</span>
+                  <span style={{fontWeight:800,fontSize:11,color:"#9333ea"}}>{item.name}</span>
                   <span style={{fontSize:10,color:"#64748b",marginLeft:4}}>{month+1}/{d}（{dow}）{item.start}〜{item.end}</span>
                   {isA&&(
                     <span style={{marginLeft:"auto",display:"flex",gap:4}}>
-                      <button style={{fontSize:8,padding:"1px 6px",borderRadius:4,border:"1px solid "+border,background:"#fff",color:accent,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}
-                        onClick={()=>isSem?setSemModal(item.id):setVisitModal(item.id)}>編集</button>
+                      <button style={{fontSize:8,padding:"1px 6px",borderRadius:4,border:"1px solid #d8b4fe",background:"#fff",color:"#9333ea",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}
+                        onClick={()=>setSemModal(item.id)}>編集</button>
                       <button style={{fontSize:8,padding:"1px 6px",borderRadius:4,border:"1px solid #fca5a5",background:"#fff",color:"#dc2626",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}
-                        onClick={()=>{if(window.confirm("削除しますか？")){if(isSem){setSeminars(ps=>ps.filter(x=>x.id!==item.id));}else{setVisits(ps=>ps.filter(x=>x.id!==item.id));}}}}>削除</button>
+                        onClick={()=>{if(window.confirm("削除しますか？")){setSeminars(ps=>ps.filter(x=>x.id!==item.id));}}}>削除</button>
                     </span>
                   )}
                 </div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:3,alignItems:"center"}}>
-                  <span style={{fontSize:9,color:accent,fontWeight:700}}>参加：</span>
+                  <span style={{fontSize:9,color:"#9333ea",fontWeight:700}}>参加：</span>
                   {participants.map(s=>(
-                    <span key={s.id} style={{fontSize:9,background:"#fff",border:"1px solid "+border,
-                      color:accent,borderRadius:10,padding:"1px 6px",fontWeight:600}}>{s.name}</span>
+                    <span key={s.id} style={{fontSize:9,background:"#fff",border:"1px solid #d8b4fe",
+                      color:"#9333ea",borderRadius:10,padding:"1px 6px",fontWeight:600}}>{s.name}</span>
                   ))}
                 </div>
               </div>
@@ -1200,10 +1194,9 @@ export default function App() {
           });
         })()}
 
-        {/* 矯正日インフォ - 特記事項と重複するため削除 */}
-
-        {/* 📋 欄外特記：セミナー・訪問サマリー */}
+        {/* 📋 欄外特記：矯正・セミナー・訪問サマリー */}
         {(()=>{
+          const monthKyosei=Object.entries(kyoseiDays).map(([d,ki])=>({day:Number(d),dow:new Date(year,month,Number(d)).getDay(),...ki})).sort((a,b)=>a.day-b.day);
           const monthSeminars=seminars.filter(sm=>{
             const sd=new Date(sm.date);
             return sd.getFullYear()===year&&sd.getMonth()===month;
@@ -1213,7 +1206,7 @@ export default function App() {
             return vd.getFullYear()===year&&vd.getMonth()===month;
           }).sort((a,b)=>new Date(a.date)-new Date(b.date));
 
-          if(monthSeminars.length===0&&monthVisits.length===0) return null;
+          if(monthKyosei.length===0&&monthSeminars.length===0&&monthVisits.length===0) return null;
 
           return (
             <div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,
@@ -1222,6 +1215,16 @@ export default function App() {
                 📋 {year}年{month+1}月 特記事項
               </div>
               <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+                {monthKyosei.length>0&&(
+                  <div>
+                    <div style={{fontSize:9,fontWeight:800,color:"#0f766e",marginBottom:4}}>🦷 矯正日</div>
+                    {monthKyosei.map(k=>(
+                      <div key={k.day} style={{marginBottom:2,color:"#115e59"}}>
+                        {month+1}/{k.day}（{DAYS_JP[k.dow]}）{k.label}
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {monthSeminars.length>0&&(
                   <div>
                     <div style={{fontSize:9,fontWeight:800,color:"#7e22ce",marginBottom:4}}>🎓 セミナー</div>
