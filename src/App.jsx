@@ -1557,7 +1557,6 @@ export default function App() {
         )}
 
       </div>
-    </div>
     );
   };
 
@@ -1649,7 +1648,6 @@ export default function App() {
             });
           })}
         </div>
-      </div>
       </div>
     );
   };
@@ -1954,7 +1952,6 @@ export default function App() {
           </table>
         </div>
       </div>
-    </div>
     );
   };
 
@@ -2052,7 +2049,6 @@ export default function App() {
             <button className="abtn" onClick={()=>toast_("希望シフトを管理者に送信しました！")}>📨 管理者に送信</button>
           </div>
         </div>
-      </div>
       </div>
     );
   };
@@ -2646,6 +2642,7 @@ export default function App() {
             </div>
           </>
         )}
+      </div>
     );
   };
 
