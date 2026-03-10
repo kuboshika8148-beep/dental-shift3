@@ -1,4 +1,6 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import { supabase } from "./supabase.js";
+import { useStaff, useShifts, useWishes, useSettings, useHolidays, useKyoseiOverrides, useSeminars, useVisits, onSaveChange, getPendingSaves } from "./db.js";
 
 // ═══════════════════════════════════════════════════════
 // CONSTANTS
@@ -788,92 +790,7 @@ function shiftLabel(key) {
 // ═══════════════════════════════════════════════════════
 // SUPABASE CONFIG
 // ═══════════════════════════════════════════════════════
-const SB_URL = "https://gvxdmldpimjvicllrhll.supabase.co";
-const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd2eGRtbGRwaW1qdmljbGxyaGxsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0MTE2OTUsImV4cCI6MjA4Nzk4NzY5NX0.6EnrECgVy79VUNsbRQGL_shmhaWnPAq0BL2uYz6ilF0";
-
-async function sbGet(key) {
-  try {
-    const res = await fetch(`${SB_URL}/rest/v1/app_data?key=eq.${key}&select=value`, {
-      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }
-    });
-    const rows = await res.json();
-    return rows?.[0]?.value ?? null;
-  } catch { return null; }
-}
-
-async function sbSet(key, value) {
-  try {
-    await fetch(`${SB_URL}/rest/v1/app_data`, {
-      method: "POST",
-      headers: {
-        apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`,
-        "Content-Type": "application/json", Prefer: "resolution=merge-duplicates"
-      },
-      body: JSON.stringify({ key, value, updated_at: new Date().toISOString() })
-    });
-  } catch {}
-}
-
-// 保存中カウンター（グローバル）
-let _pendingSaves = 0;
-const _saveListeners = new Set();
-function _notifySave(n){ _pendingSaves=n; _saveListeners.forEach(fn=>fn(n)); }
-
-// ─── ストレージhook: 起動時にSupabaseから読み込み、更新時にSupabaseへ保存 ───
-function useDB(key, init) {
-  const initVal = typeof init === "function" ? init() : init;
-  const [val, setVal] = useState(() => {
-    try {
-      const s = localStorage.getItem(key);
-      return s ? JSON.parse(s) : initVal;
-    } catch { return initVal; }
-  });
-  const [synced, setSynced] = useState(false);
-
-  useEffect(() => {
-    setSynced(false);
-    let cancelled = false;
-    // まずlocalStorageから即時読み込み
-    try {
-      const s = localStorage.getItem(key);
-      if (s) setVal(JSON.parse(s));
-      else setVal(typeof init === "function" ? init() : init);
-    } catch {}
-    // Supabaseから取得（localStorageにない場合のみ使用）
-    sbGet(key).then(remote => {
-      if (cancelled) return;
-      if (remote !== null) {
-        // localStorageのデータを優先。なければSupabaseのデータを使う
-        try {
-          const local = localStorage.getItem(key);
-          const localData = local ? JSON.parse(local) : null;
-          const localEmpty = !localData || (typeof localData === 'object' && Object.keys(localData).length === 0);
-          if (localEmpty) {
-            setVal(remote);
-            try { localStorage.setItem(key, JSON.stringify(remote)); } catch {}
-          }
-          // localにデータがあればSupabaseは無視（setShifts経由で既に最新）
-        } catch {
-          setVal(remote);
-        }
-      }
-      setSynced(true);
-    });
-    return () => { cancelled = true; };
-  }, [key]);
-
-  const set = (v) => {
-    setVal(prev => {
-      const next = typeof v === "function" ? v(prev) : v;
-      try { localStorage.setItem(key, JSON.stringify(next)); } catch {}
-      // 保存中カウントを増やし、完了後に減らす
-      _notifySave(_pendingSaves + 1);
-      sbSet(key, next).finally(() => _notifySave(Math.max(0, _pendingSaves - 1)));
-      return next;
-    });
-  };
-  return [val, set, synced];
-}
+// ─── Supabase クライアント・データ層は db.js に移動済み ───
 
 // ═══════════════════════════════════════════════════════
 export default function App() {
@@ -882,24 +799,16 @@ export default function App() {
   const [tab,     setTab]     = useState("shift");
   const [year,    setYear]    = useState(today.getFullYear());
   const [month,   setMonth]   = useState(today.getMonth());
-  const [staff,   setStaff,   staffSynced]  = useDB("ds_staff",   INIT_STAFF);
-  // 月別シフト: ds_shifts_YEAR_MONTH キーで保存
-  const shiftsKey = `ds_shifts_${year}_${month}`;
-  const [shifts,  setShifts,  shiftsSynced] = useDB(shiftsKey, {});
+  const [staff,   setStaff,   staffSynced]  = useStaff(INIT_STAFF);
+  // 月別シフト
+  const [shifts,  setShifts,  shiftsSynced] = useShifts(year, month, false);
   // 翌月シフト（11〜10表示モード用）
   const nxtDispY = month===11?year+1:year;
   const nxtDispM = month===11?0:month+1;
-  const nxtShiftsKey = `ds_shifts_nxt_${year}_${month}`; // 当月表示用の翌月先読み（翌月本体とは別キー）
-  const [nxtShifts, setNxtShifts] = useDB(nxtShiftsKey, {});
-  const [wishes,  setWishes]  = useDB("ds_wishes",  {});
-  const [minSt,   setMinSt]   = useDB("ds_minSt",   DEFAULT_MIN);
-  const [wh,      setWh]      = useDB("ds_wh",       DEFAULT_WH);
-  const [whSat,   setWhSat]   = useDB("ds_whSat",    DEFAULT_WH_SAT);
-  // 矯正時間設定（デフォルト: 第2土曜午後14:00〜17:30、第4木曜午後14:00〜18:30）
-  const [kyoseiTime, setKyoseiTime] = useDB("ds_kyoseiTime", {
-    sat: { start:"14:00", end:"17:30" },
-    thu: { start:"14:00", end:"18:30" },
-  });
+  const [nxtShifts, setNxtShifts] = useShifts(year, month, true);
+  const [wishes,  setWishes]  = useWishes(year, month);
+  const settings = useSettings();
+  const {minSt, setMinSt, wh, setWh, whSat, setWhSat, kyoseiTime, setKyoseiTime, calStart, setCalStart} = settings;
   const [toast,   setToast]   = useState(null);
   const [modal,   setModal]   = useState(null);
   const [wModal,  setWModal]  = useState(null);
@@ -908,34 +817,26 @@ export default function App() {
   const [kotData, setKotData] = useState(null);
   const [kotDrag, setKotDrag] = useState(false);
   const [rdPop,   setRdPop]   = useState(null);
-  const [extraKyosei,   setExtraKyosei]   = useDB("ds_extraKyosei",   []);
-  const [deletedKyosei, setDeletedKyosei] = useDB("ds_deletedKyosei", []);
-  const [clinicHolidays, setClinicHolidays] = useDB("ds_clinicHolidays", []);
-  const [seminars, setSeminars] = useDB("ds_seminars", []);
+  const [extraKyosei,   setExtraKyosei, deletedKyosei, setDeletedKyosei] = useKyoseiOverrides();
+  const [clinicHolidays, setClinicHolidays] = useHolidays();
+  const [seminars, setSeminars] = useSeminars();
   const [semModal, setSemModal] = useState(null);
-  const [visits, setVisits] = useDB("ds_visits", []);
+  const [visits, setVisits] = useVisits();
   const [visitModal, setVisitModal] = useState(null);
   const [idModal, setIdModal] = useState(null);
   const [pendingSaves, setPendingSaves] = useState(0);
   const [ctxMenu, setCtxMenu] = useState(null); // {staffId, x, y}
 
   useEffect(()=>{
-    const fn=(n)=>setPendingSaves(n);
-    _saveListeners.add(fn);
-    return ()=>_saveListeners.delete(fn);
+    const unsub = onSaveChange((n)=>setPendingSaves(n));
+    return unsub;
   },[]); // staffId for ID/PIN setting modal
-  const [calStart, setCalStart] = useDB("ds_calStart", 11); // 1 or 11
 
   // 月移動後にshiftsが空なら自動生成
   useEffect(()=>{
     if(!staffSynced) return;
     if(staff.filter(s=>s.active).length===0) return;
-    // shiftsのstateではなくlocalStorageを直接確認（stale closure回避）
-    try {
-      const cached = localStorage.getItem(shiftsKey);
-      const data = cached ? JSON.parse(cached) : null;
-      if(data && Object.keys(data).length > 0) return; // データあり
-    } catch {}
+    if(shifts && Object.keys(shifts).length > 0) return; // データあり
     handleAuto();
   },[year, month, staffSynced]);
 
@@ -2070,16 +1971,25 @@ export default function App() {
             background:"#fff5f5",color:"#dc2626",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}
             onClick={async ()=>{
               if(window.confirm("⚠️ スタッフデータを初期データにリセットします。\nシフト・有給・設定もすべて消えます。よろしいですか？")){
-                const keys=["ds_staff","ds_shifts","ds_wishes","ds_minSt","ds_wh","ds_whSat",
-                 "ds_extraKyosei","ds_deletedKyosei","ds_clinicHolidays","ds_seminars","ds_visits","ds_kyoseiTime"];
-                keys.forEach(k=>localStorage.removeItem(k));
-                // Supabaseからも削除
-                await Promise.all(keys.map(k=>
-                  fetch(`${SB_URL}/rest/v1/app_data?key=eq.${k}`,{
-                    method:"DELETE",
-                    headers:{apikey:SB_KEY,Authorization:`Bearer ${SB_KEY}`}
-                  })
-                ));
+                // localStorage クリア
+                const lsKeys=["db_staff","db_minSt","db_wh","db_whSat","db_kyoseiTime","db_calStart",
+                  "db_holidays","db_extraKyosei","db_deletedKyosei","db_seminars","db_visits"];
+                lsKeys.forEach(k=>localStorage.removeItem(k));
+                // Supabase テーブルをクリア
+                await Promise.all([
+                  supabase.from("seminar_staff").delete().neq("seminar_id", 0),
+                  supabase.from("visit_staff").delete().neq("visit_id", 0),
+                ]);
+                await Promise.all([
+                  supabase.from("shifts").delete().neq("id", 0),
+                  supabase.from("wishes").delete().neq("id", 0),
+                  supabase.from("seminars").delete().neq("id", 0),
+                  supabase.from("visits").delete().neq("id", 0),
+                  supabase.from("staff_rest_days").delete().neq("id", 0),
+                  supabase.from("clinic_holidays").delete().neq("id", 0),
+                  supabase.from("kyosei_overrides").delete().neq("id", 0),
+                  supabase.from("staff").delete().neq("id", 0),
+                ]);
                 window.location.reload();
               }
             }}>🗑 データリセット</button>
