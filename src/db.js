@@ -201,7 +201,7 @@ export function useWishes(year, month) {
 // useSettings: clinic_settings テーブル
 // 返り値: {minSt, setMinSt, wh, setWh, whSat, setWhSat, kyoseiTime, setKyoseiTime, calStart, setCalStart}
 // ═══════════════════════════════════════════════════════
-const DEFAULT_MIN = { Dr: 1, Dh: 2, Da: 1, "受付": 1 };
+const DEFAULT_MIN = { Dr: 1, Dh: 2, Da: 1, "CS/DA": 0, "受付": 1 };
 const DEFAULT_WH = { start: "08:45", end: "18:30", breakMin: 90 };
 const DEFAULT_WH_SAT = { start: "08:45", end: "15:30", breakMin: 30 };
 const DEFAULT_KT = { sat: { start: "14:00", end: "17:30" }, thu: { start: "14:00", end: "18:30" } };

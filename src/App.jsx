@@ -8,16 +8,17 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.mi
 // CONSTANTS
 // ═══════════════════════════════════════════════════════
 const ROLES = {
-  Dr:   { label:"歯科医師",   short:"Dr",  color:"#b91c1c", bg:"#fee2e2" },
-  Dh:   { label:"歯科衛生士", short:"Dh",  color:"#1d4ed8", bg:"#dbeafe" },
-  Da:   { label:"歯科助手",   short:"Da",  color:"#15803d", bg:"#dcfce7" },
-  受付:  { label:"受付",       short:"受付", color:"#7c3aed", bg:"#ede9fe" },
-  技工士: { label:"技工士",    short:"技工", color:"#b45309", bg:"#fef3c7" },
-  TC:   { label:"TC",        short:"TC",  color:"#0e7490", bg:"#cffafe" },
+  Dr:      { label:"歯科医師",   short:"Dr",    color:"#b91c1c", bg:"#fee2e2" },
+  Dh:      { label:"歯科衛生士", short:"Dh",    color:"#1d4ed8", bg:"#dbeafe" },
+  Da:      { label:"歯科助手",   short:"Da",    color:"#15803d", bg:"#dcfce7" },
+  "CS/DA": { label:"CS/DA",     short:"CS/DA", color:"#d97706", bg:"#fef9c3" },
+  受付:    { label:"受付",       short:"受付",   color:"#7c3aed", bg:"#ede9fe" },
+  技工士:  { label:"技工士",     short:"技工",   color:"#b45309", bg:"#fef3c7" },
+  TC:      { label:"TC",        short:"TC",    color:"#0e7490", bg:"#cffafe" },
 };
 
 // 矯正当番対象役職
-const KYOSEI_ROLES = new Set(["Dh","Da","受付","TC"]);
+const KYOSEI_ROLES = new Set(["Dh","Da","CS/DA","受付","TC"]);
 
 // シフト種別 ── 就業規則（第34条）に基づく正確な時間
 // 平日:    8:55〜19:00 休憩12:30〜14:00(90分) = 8h05m
