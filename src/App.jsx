@@ -2468,7 +2468,16 @@ export default function App() {
           }
         });
       });
-      // 衛生士誰でも の振り分け
+      // 衛生士誰でも の振り分け（午前/午後のシフト制約を考慮）
+      // 午前半休=午後から出勤、午後半休=午前のみ出勤
+      const isAMTime=time=>{const h=parseInt((time||"").split(":")[0]);return !isNaN(h)&&h<12;};
+      const canWorkAt=(staffId,time)=>{
+        const sh=dayShifts[staffId];
+        if(!sh||sh==="休み"||sh==="有給") return false;
+        if(sh==="午後半休"&&!isAMTime(time)) return false; // 午前出→午後NG
+        if(sh==="午前半休"&&isAMTime(time)) return false;  // 午後出→午前NG
+        return true;
+      };
       const availableDh=workingDh.filter(s=>!assignedDhIds.has(s.id));
       // 岡崎Dr がいる予約の「誰でも」枠にはDa谷を優先配置
       const normName=s=>(s||"").normalize("NFKC").replace(/﨑/g,"崎").replace(/\s+/g," ").trim();
@@ -2486,7 +2495,8 @@ export default function App() {
       if(taniDa){
         parsed.appointments.forEach(appt=>{
           appt.staff.forEach(sa=>{
-            if(sa.isAny&&sa.role==="Dh"&&hasOkazakiAt(appt.time)&&!taniAssignedTimes.has(appt.time)){
+            if(sa.isAny&&sa.role==="Dh"&&hasOkazakiAt(appt.time)&&!taniAssignedTimes.has(appt.time)
+              &&canWorkAt(taniDa.id,appt.time)){
               taniAssignedTimes.add(appt.time);
               anyAssignments.push({
                 ...appt, staffAssign:sa,
@@ -2498,14 +2508,14 @@ export default function App() {
           });
         });
       }
-      // 残りの「誰でも」枠を通常DH振り分け
-      let dhIdx=0;
+      // 残りの「誰でも」枠を通常DH振り分け（時間帯に勤務可能なDHのみ）
       parsed.appointments.forEach(appt=>{
         appt.staff.forEach(sa=>{
           if(sa.isAny&&sa.role==="Dh"){
             // 既にDa谷で割り当て済みならスキップ
             if(taniAssignedTimes.has(appt.time)&&anyAssignments.some(a=>a.time===appt.time&&a.chair===appt.chair)) return;
-            const assigned=dhIdx<availableDh.length?availableDh[dhIdx++]:null;
+            // この時間帯に勤務可能で、まだ割り当てられていないDHを探す
+            const assigned=availableDh.find(s=>!assignedDhIds.has(s.id)&&canWorkAt(s.id,appt.time))||null;
             anyAssignments.push({
               ...appt, staffAssign:sa,
               matchedStaff:assigned,
