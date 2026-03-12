@@ -821,6 +821,7 @@ export default function App() {
   const [kotDrag, setKotDrag] = useState(false);
   const [apptData, setApptData] = useState(null);
   const [apptDrag, setApptDrag] = useState(false);
+  const [drExtra, setDrExtra] = useState({});// key: "chair_time" -> staffId
   const [rdPop,   setRdPop]   = useState(null);
   const [extraKyosei,   setExtraKyosei, deletedKyosei, setDeletedKyosei] = useKyoseiOverrides();
   const [clinicHolidays, setClinicHolidays] = useHolidays();
@@ -2249,15 +2250,36 @@ export default function App() {
     // PDF解析: テキスト項目を座標付きで取得
     async function parsePdf(arrayBuffer){
       const pdf=await pdfjsLib.getDocument({data:arrayBuffer}).promise;
-      const allItems=[];
+      const rawItems=[];
       for(let p=1;p<=pdf.numPages;p++){
         const page=await pdf.getPage(p);
         const tc=await page.getTextContent();
         tc.items.forEach(it=>{
-          if(it.str.trim()) allItems.push({str:it.str, x:Math.round(it.transform[4]), y:Math.round(it.transform[5]), page:p});
+          if(it.str.trim()) rawItems.push({
+            str:it.str.normalize("NFKC"), // 全角英数→半角、半角カナ→全角 等を統一
+            x:it.transform[4],  // 丸めない（精度維持）
+            y:it.transform[5],
+            w:it.width||0,
+            page:p
+          });
         });
       }
-      return allItems;
+      // 同一行(Y座標近い)で隣接するテキストを結合（pdfjsが分割することがある）
+      rawItems.sort((a,b)=>b.y-a.y||a.x-b.x);
+      const merged=[];
+      const yTol=2; // Y座標の許容誤差
+      const xGap=3; // X座標のギャップ許容値
+      for(const it of rawItems){
+        const last=merged[merged.length-1];
+        if(last && Math.abs(last.y-it.y)<yTol && it.x<=(last.x+last.w+xGap) && last.page===it.page){
+          // 前のアイテムに結合
+          last.str+=it.str;
+          last.w=(it.x-last.x)+it.w;
+        } else {
+          merged.push({...it});
+        }
+      }
+      return merged;
     }
 
     // テキスト項目→構造化データ
@@ -2285,20 +2307,28 @@ export default function App() {
         }
       }
       // チェア列ヘッダーを検出
-      const chairNames=["メンテ１","メンテ２","メンテ３","メンテ４","Dr.5","Dr.５","Dr.6","Dr.６","Dr.7","Dr.７","特診室","新患","ｶｳﾝｾﾘﾝｸﾞ"];
-      const chairNorm=s=>s.replace(/[１-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0)).replace(/\s/g,"");
+      const chairNames=["メンテ1","メンテ2","メンテ3","メンテ4","Dr.5","Dr.6","Dr.7","特診室","新患","カウンセリング"];
+      // NFKC正規化済みなので半角カナ・全角数字は自動変換済み
+      const chairNorm=s=>s.normalize("NFKC").replace(/\s/g,"");
       const headerItems=items.filter(it=>{
         const n=chairNorm(it.str);
         return chairNames.some(cn=>n.includes(chairNorm(cn)));
       });
       // X座標でチェア列の境界を決定
       const colBounds=[];
-      const uniqueX=[...new Set(headerItems.map(h=>h.x))].sort((a,b)=>a-b);
+      // ヘッダーX座標を近い値でグルーピング（同一列の揺れ吸収）
+      const sortedHX=[...headerItems].sort((a,b)=>a.x-b.x);
+      const uniqueX=[];
+      for(const h of sortedHX){
+        if(uniqueX.length===0||h.x-uniqueX[uniqueX.length-1]>10){
+          uniqueX.push(h.x);
+        }
+      }
       // 列境界: 各ヘッダーXの中間点
       for(let i=0;i<uniqueX.length;i++){
-        const left=i===0?0:Math.round((uniqueX[i-1]+uniqueX[i])/2);
-        const right=i===uniqueX.length-1?9999:Math.round((uniqueX[i]+uniqueX[i+1])/2);
-        const hdr=headerItems.find(h=>h.x===uniqueX[i]);
+        const left=i===0?-9999:(uniqueX[i-1]+uniqueX[i])/2;
+        const right=i===uniqueX.length-1?9999:(uniqueX[i]+uniqueX[i+1])/2;
+        const hdr=headerItems.find(h=>Math.abs(h.x-uniqueX[i])<10);
         colBounds.push({name:hdr?hdr.str.trim():`列${i+1}`, left, right, x:uniqueX[i]});
       }
       if(colBounds.length===0) return null;
@@ -2309,23 +2339,26 @@ export default function App() {
       // セル内テキストを集約
       const headerY=headerItems.length>0?Math.min(...headerItems.map(h=>h.y)):9999;
       const contentItems=items.filter(it=>it.y<headerY-5);
+      // 時間行間の間隔から、行に属す最大距離を算出
+      const timeGap=timeYs.length>=2?Math.abs(timeYs[0]-timeYs[1]):30;
+      const maxRowDist=timeGap*0.6; // 行間の60%以内なら同じ時間帯に属する
       // セルをチェア×時間帯にマッピング
       const cells={};// key: "colIdx_timeY" -> [strings]
       contentItems.forEach(it=>{
         const col=colBounds.findIndex(c=>it.x>=c.left&&it.x<c.right);
         if(col<0) return;
-        // 最も近い時間Y
-        let bestTy=timeYs[0], bestDist=999999;
+        // 最も近い時間Yを探索（閾値付き）
+        let bestTy=null, bestDist=999999;
         timeYs.forEach(ty=>{
           const d=Math.abs(it.y-ty);
           if(d<bestDist){bestDist=d;bestTy=ty;}
         });
+        if(bestTy===null||bestDist>maxRowDist) return; // 遠すぎる項目はスキップ
         const key=`${col}_${bestTy}`;
         if(!cells[key]) cells[key]=[];
         cells[key].push(it.str.trim());
       });
       // セルからスタッフ割り当てを抽出
-      const staffRe=/^(DH|Dr|衛生士)(誰でも|.+)$|^院長$/;
       const appointments=[];
       const timeMap={};
       timeItems.forEach(t=>{timeMap[t.y]=t.str.trim();});
@@ -2333,26 +2366,34 @@ export default function App() {
         const [colIdx,ty]=key.split("_").map(Number);
         const chair=colBounds[colIdx]?.name||"";
         const time=timeMap[ty]||"";
+        // セル内のテキストを結合してからスタッフ抽出（分割対策）
         const text=strs.join(" ");
         // 患者ID (6桁数字)
         const idMatch=text.match(/(\d{6})/);
-        // スタッフ抽出
+        // スタッフ抽出 - 結合テキストからも検出
         let assignedStaff=[];
-        strs.forEach(s=>{
-          const ss=s.trim();
+        const extractStaff=(ss)=>{
+          ss=ss.trim();
+          const ssN=ss.normalize("NFKC").replace(/﨑/g,"崎");
           if(ss==="院長") assignedStaff.push({raw:"院長",role:"Dr",name:"院長",isAny:false});
-          else if(ss.match(/^DH(.+)/)){
-            const n=ss.slice(2);
+          else if(ssN==="岡崎"||ss==="岡﨑") assignedStaff.push({raw:ss,role:"Dr",name:"岡崎",isAny:false});
+          else if(/^DH\s*(.+)/.test(ss)){
+            const n=ss.replace(/^DH\s*/,"");
             assignedStaff.push({raw:ss,role:"Dh",name:n,isAny:n==="誰でも"});
           }
-          else if(ss.match(/^Dr(.+)/)){
-            const n=ss.slice(2);
+          else if(/^Dr\.?\s*(.+)/.test(ss)&&!/^Dr\.\d/.test(ss)){
+            // Dr.5等のチェア名は除外
+            const n=ss.replace(/^Dr\.?\s*/,"");
             assignedStaff.push({raw:ss,role:"Dr",name:n,isAny:n==="誰でも"});
           }
-          else if(ss.includes("衛生士誰でも")||ss.includes("衛生士　誰でも")){
+          else if(/衛生士\s*誰でも/.test(ss)){
             assignedStaff.push({raw:ss,role:"Dh",name:"誰でも",isAny:true});
           }
-        });
+        };
+        // 個別テキストから抽出
+        strs.forEach(s=>extractStaff(s));
+        // 個別で見つからなかった場合、結合テキストからも試行
+        if(assignedStaff.length===0) extractStaff(text);
         if(assignedStaff.length>0||idMatch){
           appointments.push({chair,time,text,patientId:idMatch?idMatch[1]:"",staff:assignedStaff});
         }
@@ -2364,14 +2405,21 @@ export default function App() {
     function matchStaff(pdfName, role, staffList){
       if(!pdfName||pdfName==="誰でも") return null;
       if(pdfName==="院長") return null; // 院長は別扱い
-      // 漢字正規化 (﨑→崎 等)
-      const norm=s=>(s||"").replace(/﨑/g,"崎").replace(/　/g," ").trim();
+      // 漢字正規化 (異体字・全角半角・スペース統一)
+      const norm=s=>(s||"").normalize("NFKC")
+        .replace(/﨑/g,"崎").replace(/髙/g,"高").replace(/濵/g,"浜").replace(/邊|邉/g,"辺")
+        .replace(/齋|齊/g,"斎").replace(/廣/g,"広").replace(/櫻/g,"桜").replace(/澤/g,"沢")
+        .replace(/\s+/g," ").trim();
       const target=norm(pdfName);
       const candidates=role?staffList.filter(s=>s.role===role):staffList;
-      return candidates.find(s=>{
-        const surname=norm(s.name).split(/\s/)[0];
-        return surname===target||norm(s.name).includes(target);
-      })||null;
+      // 完全一致 → 姓一致 → 部分一致 の優先度で検索
+      return candidates.find(s=>norm(s.name)===target)
+        || candidates.find(s=>{
+          const surname=norm(s.name).split(/\s/)[0];
+          return surname===target;
+        })
+        || candidates.find(s=>norm(s.name).includes(target)||target.includes(norm(s.name).split(/\s/)[0]))
+        || null;
     }
 
     // シフトデータとの照合 + 衛生士自動振り分け
@@ -2422,11 +2470,41 @@ export default function App() {
       });
       // 衛生士誰でも の振り分け
       const availableDh=workingDh.filter(s=>!assignedDhIds.has(s.id));
-      let dhIdx=0;
+      // 岡崎Dr がいる予約の「誰でも」枠にはDa谷を優先配置
+      const normName=s=>(s||"").normalize("NFKC").replace(/﨑/g,"崎").replace(/\s+/g," ").trim();
+      const taniDa=workingDa.find(s=>normName(s.name).includes("谷"));
       const anyAssignments=[];
+      // 同一時間帯に岡崎/院長がいるかチェック（PDFの生テキストから直接検出）
+      const hasOkazakiAt=(time)=>{
+        return parsed.appointments.some(appt=>appt.time===time&&(
+          appt.staff.some(sa=>sa.name==="院長"||normName(sa.name).includes("岡崎"))||
+          appt.text.includes("岡崎")||appt.text.includes("岡﨑")||appt.text.includes("院長")
+        ));
+      };
+      // まず岡崎/院長がいる時間帯の「誰でも」枠でDa谷を優先配置
+      const taniAssignedTimes=new Set();
+      if(taniDa){
+        parsed.appointments.forEach(appt=>{
+          appt.staff.forEach(sa=>{
+            if(sa.isAny&&sa.role==="Dh"&&hasOkazakiAt(appt.time)&&!taniAssignedTimes.has(appt.time)){
+              taniAssignedTimes.add(appt.time);
+              anyAssignments.push({
+                ...appt, staffAssign:sa,
+                matchedStaff:taniDa,
+                autoAssigned:true, priorityNote:"岡崎Dr枠→Da谷 優先配置",
+                conflict:null,
+              });
+            }
+          });
+        });
+      }
+      // 残りの「誰でも」枠を通常DH振り分け
+      let dhIdx=0;
       parsed.appointments.forEach(appt=>{
         appt.staff.forEach(sa=>{
           if(sa.isAny&&sa.role==="Dh"){
+            // 既にDa谷で割り当て済みならスキップ
+            if(taniAssignedTimes.has(appt.time)&&anyAssignments.some(a=>a.time===appt.time&&a.chair===appt.chair)) return;
             const assigned=dhIdx<availableDh.length?availableDh[dhIdx++]:null;
             anyAssignments.push({
               ...appt, staffAssign:sa,
@@ -2440,6 +2518,32 @@ export default function App() {
       });
       // 未配置のDH（出勤しているが予約に出てこない）
       const unassignedDh=workingDh.filter(s=>!assignedDhIds.has(s.id));
+      // チェア別データ構築（カラム表示用）
+      const isDrChair=name=>/^Dr\./i.test(name);
+      const chairMap={};
+      parsed.chairs.forEach(ch=>{chairMap[ch]=[];});
+      // 全予約をチェアごとにグループ化し、割り当て結果を付与
+      parsed.appointments.forEach(appt=>{
+        if(!chairMap[appt.chair]) chairMap[appt.chair]=[];
+        // この予約の割り当て結果を探す
+        const named=results.find(r=>r.time===appt.time&&r.chair===appt.chair);
+        const any=anyAssignments.find(a=>a.time===appt.time&&a.chair===appt.chair);
+        chairMap[appt.chair].push({
+          ...appt,
+          assignedStaff:named?.matchedStaff||any?.matchedStaff||null,
+          assignedRole:named?.staffAssign?.role||any?.staffAssign?.role||null,
+          priorityNote:any?.priorityNote||null,
+          conflict:named?.conflict||any?.conflict||null,
+          isAny:!!any,
+          // Dr/アシスト情報
+          drStaff:appt.staff.find(s=>s.role==="Dr")||null,
+          dhStaff:appt.staff.find(s=>s.role==="Dh")||null,
+          drMatched:results.find(r=>r.time===appt.time&&r.chair===appt.chair&&r.staffAssign?.role==="Dr")?.matchedStaff||null,
+          dhMatched:(results.find(r=>r.time===appt.time&&r.chair===appt.chair&&r.staffAssign?.role==="Dh")?.matchedStaff)
+            ||(anyAssignments.find(a=>a.time===appt.time&&a.chair===appt.chair)?.matchedStaff)||null,
+          dhPriorityNote:any?.priorityNote||null,
+        });
+      });
       return {
         date:parsed.date, notes:parsed.notes,
         workingStaff, workingDh, workingDr, workingDa, workingUketsuke,
@@ -2448,6 +2552,7 @@ export default function App() {
         unassignedDh,
         totalAppts:parsed.appointments.length,
         conflicts:results.filter(r=>r.conflict),
+        chairs:parsed.chairs, chairMap, isDrChair,
       };
     }
 
@@ -2470,12 +2575,19 @@ export default function App() {
     }
 
     const R=apptData?.result;
+    // 午前/午後分類ヘルパー
+    const isAM=time=>{const h=parseInt((time||"").split(":")[0]);return !isNaN(h)&&h<12;};
+    const splitAMPM=list=>{
+      const am=list.filter(a=>isAM(a.time));
+      const pm=list.filter(a=>!isAM(a.time));
+      return {am,pm};
+    };
 
     return (
       <div>
         <div className="ph">
           <div className="ptitle">予約照合（チェア別予約一覧PDF）</div>
-          {apptData&&<button className="cbtn" onClick={()=>setApptData(null)} style={{background:"#ef4444",color:"#fff"}}>クリア</button>}
+          {apptData&&<button className="cbtn" onClick={()=>{setApptData(null);setDrExtra({});}} style={{background:"#ef4444",color:"#fff"}}>クリア</button>}
         </div>
 
         {!apptData&&(
@@ -2510,24 +2622,32 @@ export default function App() {
             </div>
 
             {/* サマリーカード */}
-            <div className="sum-cards">
-              <div className="sum-card">
-                <div className="sum-val">{R.totalAppts}</div>
-                <div className="sum-lbl">予約件数</div>
-              </div>
-              <div className="sum-card">
-                <div className="sum-val">{R.workingStaff.length}</div>
-                <div className="sum-lbl">出勤者数</div>
-              </div>
-              <div className="sum-card">
-                <div className="sum-val" style={{color:"#1d4ed8"}}>{R.workingDh.length}</div>
-                <div className="sum-lbl">出勤DH</div>
-              </div>
-              <div className="sum-card">
-                <div className="sum-val" style={{color:R.conflicts.length>0?"#ef4444":"#16a34a"}}>{R.conflicts.length}</div>
-                <div className="sum-lbl">不整合</div>
-              </div>
-            </div>
+            {(()=>{
+              const allAppts=apptData?.parsed?.appointments||[];
+              const amCount=allAppts.filter(a=>isAM(a.time)).length;
+              const pmCount=allAppts.filter(a=>!isAM(a.time)).length;
+              return (
+                <div className="sum-cards">
+                  <div className="sum-card">
+                    <div className="sum-val">{R.totalAppts}</div>
+                    <div className="sum-lbl">予約件数</div>
+                    <div style={{fontSize:11,color:"#64748b",marginTop:2}}>午前{amCount} / 午後{pmCount}</div>
+                  </div>
+                  <div className="sum-card">
+                    <div className="sum-val">{R.workingStaff.length}</div>
+                    <div className="sum-lbl">出勤者数</div>
+                  </div>
+                  <div className="sum-card">
+                    <div className="sum-val" style={{color:"#1d4ed8"}}>{R.workingDh.length}</div>
+                    <div className="sum-lbl">出勤DH</div>
+                  </div>
+                  <div className="sum-card">
+                    <div className="sum-val" style={{color:R.conflicts.length>0?"#ef4444":"#16a34a"}}>{R.conflicts.length}</div>
+                    <div className="sum-lbl">不整合</div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* 出勤者一覧 */}
             <div className="kot-wrap" style={{marginBottom:12}}>
@@ -2543,51 +2663,20 @@ export default function App() {
               </div>
             </div>
 
-            {/* 不整合アラート */}
+            {/* 不整合アラート（上部に集約） */}
             {R.conflicts.length>0&&(
               <div className="kot-wrap" style={{marginBottom:12,borderLeft:"4px solid #ef4444"}}>
-                <div className="cpt" style={{color:"#ef4444"}}>不整合検出</div>
+                <div className="cpt" style={{color:"#ef4444"}}>不整合検出（{R.conflicts.length}件）</div>
                 {R.conflicts.map((c,i)=>(
-                  <div key={i} style={{padding:"6px 0",borderBottom:"1px solid #fee2e2",fontSize:13}}>
+                  <div key={i} style={{padding:"4px 0",borderBottom:"1px solid #fee2e2",fontSize:13}}>
                     {c.conflict==="off_but_assigned"&&(
-                      <span><strong style={{color:"#ef4444"}}>{c.matchedStaff?.name}</strong> はシフト上「{c.shiftType}」ですが、予約 {c.chair} {c.time} に配置されています</span>
+                      <span><strong style={{color:"#ef4444"}}>{c.matchedStaff?.name}</strong> はシフト上「{c.shiftType}」ですが、{c.chair} {c.time} に配置</span>
                     )}
                     {c.conflict==="unmatched"&&(
-                      <span style={{color:"#d97706"}}>「{c.staffAssign.raw}」に該当するスタッフが見つかりません（{c.chair} {c.time}）</span>
+                      <span style={{color:"#d97706"}}>「{c.staffAssign.raw}」該当スタッフなし（{c.chair} {c.time}）</span>
                     )}
                   </div>
                 ))}
-              </div>
-            )}
-
-            {/* 衛生士自動振り分け結果 */}
-            {R.anyAssignments.length>0&&(
-              <div className="kot-wrap" style={{marginBottom:12,borderLeft:"4px solid #1d4ed8"}}>
-                <div className="cpt" style={{color:"#1d4ed8"}}>「衛生士誰でも」自動振り分け結果</div>
-                <table style={{width:"100%",borderCollapse:"collapse",marginTop:8,fontSize:13}}>
-                  <thead>
-                    <tr style={{background:"#f1f5f9"}}>
-                      <th style={{padding:"6px 8px",textAlign:"left",fontWeight:700}}>チェア</th>
-                      <th style={{padding:"6px 8px",textAlign:"left",fontWeight:700}}>時間</th>
-                      <th style={{padding:"6px 8px",textAlign:"left",fontWeight:700}}>振り分け先</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {R.anyAssignments.map((a,i)=>(
-                      <tr key={i} style={{borderBottom:"1px solid #e2e8f0"}}>
-                        <td style={{padding:"5px 8px"}}>{a.chair}</td>
-                        <td style={{padding:"5px 8px"}}>{a.time}</td>
-                        <td style={{padding:"5px 8px"}}>
-                          {a.matchedStaff?(
-                            <span style={{fontWeight:700,color:"#1d4ed8"}}>{a.matchedStaff.name}</span>
-                          ):(
-                            <span style={{color:"#ef4444",fontWeight:700}}>空きDHなし</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
               </div>
             )}
 
@@ -2606,32 +2695,116 @@ export default function App() {
               </div>
             )}
 
-            {/* 指名配置一覧 */}
-            {R.namedResults.filter(r=>!r.conflict).length>0&&(
-              <div className="kot-wrap" style={{marginBottom:12}}>
-                <div className="cpt">指名配置一覧</div>
-                <table style={{width:"100%",borderCollapse:"collapse",marginTop:8,fontSize:13}}>
-                  <thead>
-                    <tr style={{background:"#f1f5f9"}}>
-                      <th style={{padding:"6px 8px",textAlign:"left"}}>チェア</th>
-                      <th style={{padding:"6px 8px",textAlign:"left"}}>時間</th>
-                      <th style={{padding:"6px 8px",textAlign:"left"}}>PDF指定</th>
-                      <th style={{padding:"6px 8px",textAlign:"left"}}>マッチ結果</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {R.namedResults.filter(r=>!r.conflict).map((r,i)=>(
-                      <tr key={i} style={{borderBottom:"1px solid #e2e8f0"}}>
-                        <td style={{padding:"5px 8px"}}>{r.chair}</td>
-                        <td style={{padding:"5px 8px"}}>{r.time}</td>
-                        <td style={{padding:"5px 8px"}}>{r.staffAssign.raw}</td>
-                        <td style={{padding:"5px 8px",fontWeight:700,color:"#16a34a"}}>{r.matchedStaff?.name||"—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            {/* チェア別カラム表示（午前・午後） */}
+            {R.chairs&&(()=>{
+              const isDr=R.isDrChair;
+              const renderPeriodChairs=(label,filterFn)=>{
+                const color=label==="午前"?"#ea580c":"#7c3aed";
+                const bg=label==="午前"?"#fff7ed":"#f5f3ff";
+                // このピリオドに予約があるチェアのみ表示
+                const activeChairs=R.chairs.filter(ch=>(R.chairMap[ch]||[]).some(a=>filterFn(a.time)));
+                if(activeChairs.length===0) return null;
+                return (
+                  <div style={{marginBottom:16}}>
+                    <div style={{fontSize:16,fontWeight:900,color,marginBottom:8,padding:"4px 10px",background:bg,borderRadius:6,display:"inline-block"}}>{label}</div>
+                    <div style={{display:"flex",gap:4,overflowX:"auto",paddingBottom:8}}>
+                      {activeChairs.map(ch=>{
+                        const appts=(R.chairMap[ch]||[]).filter(a=>filterFn(a.time)).sort((a,b)=>{
+                          const ta=a.time.split(":").map(Number),tb=b.time.split(":").map(Number);
+                          return (ta[0]*60+ta[1])-(tb[0]*60+tb[1]);
+                        });
+                        const drChair=isDr(ch);
+                        return (
+                          <div key={ch} style={{
+                            minWidth:110, maxWidth:140,
+                            flex:"0 0 auto",
+                            border:"1px solid #e2e8f0",borderRadius:8,background:"#fff",
+                          }}>
+                            {/* チェアヘッダー */}
+                            <div style={{
+                              padding:"4px 6px",background:drChair?"#fef2f2":"#f0f9ff",
+                              borderBottom:"1px solid #e2e8f0",borderRadius:"8px 8px 0 0",
+                              display:"flex",justifyContent:"space-between",alignItems:"center",
+                            }}>
+                              <span style={{fontSize:11,fontWeight:900,color:drChair?"#b91c1c":"#1e40af"}}>{ch}</span>
+                              <span style={{fontSize:10,color:"#94a3b8"}}>{appts.length}件</span>
+                            </div>
+                            {/* 予約リスト */}
+                            {appts.map((appt,ai)=>(
+                              <div key={ai} style={{
+                                padding:"4px 6px",borderBottom:"1px solid #f1f5f9",fontSize:11,
+                              }}>
+                                <div style={{fontWeight:700,color:"#334155",marginBottom:2}}>{appt.time}</div>
+                                {appt.patientId&&<div style={{fontSize:10,color:"#94a3b8"}}>{appt.patientId}</div>}
+                                {drChair?(
+                                  <>
+                                    {/* Drチェア: アシスト枠 */}
+                                    <div style={{marginTop:3}}>
+                                      <div style={{fontSize:9,color:"#1d4ed8",fontWeight:700}}>アシスト</div>
+                                      <div style={{
+                                        padding:"2px 4px",borderRadius:4,fontSize:10,fontWeight:700,
+                                        background:appt.dhMatched?(appt.dhPriorityNote?"#fef3c7":"#dbeafe"):"#f3f4f6",
+                                        color:appt.dhMatched?(appt.dhPriorityNote?"#d97706":"#1d4ed8"):"#94a3b8",
+                                      }}>
+                                        {appt.dhMatched?(
+                                          <>{appt.dhMatched.name}{appt.dhPriorityNote&&<span style={{fontSize:8}}> ★</span>}</>
+                                        ):appt.dhStaff?(
+                                          appt.dhStaff.isAny?"未配置":appt.dhStaff.name
+                                        ):"—"}
+                                      </div>
+                                    </div>
+                                    {/* Drチェア: 人員枠（手動選択） */}
+                                    <div style={{marginTop:2}}>
+                                      <div style={{fontSize:9,color:"#15803d",fontWeight:700}}>人員</div>
+                                      <select
+                                        value={drExtra[`${ch}_${appt.time}`]||""}
+                                        onChange={e=>setDrExtra(prev=>({...prev,[`${ch}_${appt.time}`]:e.target.value}))}
+                                        style={{
+                                          width:"100%",padding:"2px 2px",borderRadius:4,fontSize:10,fontWeight:700,
+                                          border:"1px solid #d1d5db",background:drExtra[`${ch}_${appt.time}`]?"#dcfce7":"#fff",
+                                          color:drExtra[`${ch}_${appt.time}`]?"#15803d":"#94a3b8",
+                                          cursor:"pointer",
+                                        }}
+                                      >
+                                        <option value="">— 選択 —</option>
+                                        {R.workingStaff.map(s=>(
+                                          <option key={s.id} value={s.id}>{ROLES[s.role]?.short||s.role} {s.name.split(" ")[0]}</option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                  </>
+                                ):(
+                                  /* メンテ・その他チェア: 担当1枠 */
+                                  <div style={{marginTop:3}}>
+                                    <div style={{
+                                      padding:"2px 4px",borderRadius:4,fontSize:10,fontWeight:700,
+                                      background:appt.assignedStaff?(appt.priorityNote?"#fef3c7":"#dbeafe"):(appt.conflict?"#fee2e2":"#f3f4f6"),
+                                      color:appt.assignedStaff?(appt.priorityNote?"#d97706":"#1d4ed8"):(appt.conflict?"#ef4444":"#94a3b8"),
+                                    }}>
+                                      {appt.assignedStaff?(
+                                        <>{appt.assignedStaff.name}{appt.priorityNote&&<span style={{fontSize:8}}> ★</span>}</>
+                                      ):(
+                                        appt.staff.length>0?appt.staff[0].raw:"—"
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              };
+              return (
+                <>
+                  {renderPeriodChairs("午前",t=>isAM(t))}
+                  {renderPeriodChairs("午後",t=>!isAM(t))}
+                </>
+              );
+            })()}
           </>
         )}
       </div>
