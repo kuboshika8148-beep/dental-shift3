@@ -2532,12 +2532,37 @@ export default function App() {
       const isDrChair=name=>/^Dr\./i.test(name);
       const chairMap={};
       parsed.chairs.forEach(ch=>{chairMap[ch]=[];});
+      // Drチェア用: アシスト（DA/DH）自動振り分け
+      const drAssistMap={};// key:"chair_time" -> staff
+      const assignedAssistIds=new Set([...assignedDhIds]);
+      // Drチェアの予約にアシストを自動配置（Da優先、次にDH）
+      const availableAssist=[
+        ...workingDa.filter(s=>!assignedAssistIds.has(s.id)),
+        ...availableDh.filter(s=>!assignedAssistIds.has(s.id)),
+      ];
+      parsed.appointments.forEach(appt=>{
+        if(!isDrChair(appt.chair)) return;
+        const key=`${appt.chair}_${appt.time}`;
+        // 岡崎/院長枠→Da谷優先
+        const isOkazaki=appt.staff.some(sa=>sa.name==="院長"||normName(sa.name).includes("岡崎"))
+          ||appt.text.includes("岡崎")||appt.text.includes("岡﨑")||appt.text.includes("院長");
+        if(isOkazaki&&taniDa&&canWorkAt(taniDa.id,appt.time)&&!assignedAssistIds.has(taniDa.id)){
+          drAssistMap[key]={staff:taniDa, note:"岡崎Dr枠→Da谷 優先"};
+          assignedAssistIds.add(taniDa.id);
+        } else {
+          const ast=availableAssist.find(s=>!assignedAssistIds.has(s.id)&&canWorkAt(s.id,appt.time));
+          if(ast){
+            drAssistMap[key]={staff:ast, note:null};
+            assignedAssistIds.add(ast.id);
+          }
+        }
+      });
       // 全予約をチェアごとにグループ化し、割り当て結果を付与
       parsed.appointments.forEach(appt=>{
         if(!chairMap[appt.chair]) chairMap[appt.chair]=[];
-        // この予約の割り当て結果を探す
         const named=results.find(r=>r.time===appt.time&&r.chair===appt.chair);
         const any=anyAssignments.find(a=>a.time===appt.time&&a.chair===appt.chair);
+        const drAst=drAssistMap[`${appt.chair}_${appt.time}`];
         chairMap[appt.chair].push({
           ...appt,
           assignedStaff:named?.matchedStaff||any?.matchedStaff||null,
@@ -2545,12 +2570,14 @@ export default function App() {
           priorityNote:any?.priorityNote||null,
           conflict:named?.conflict||any?.conflict||null,
           isAny:!!any,
-          // Dr/アシスト情報
           drStaff:appt.staff.find(s=>s.role==="Dr")||null,
           dhStaff:appt.staff.find(s=>s.role==="Dh")||null,
           drMatched:results.find(r=>r.time===appt.time&&r.chair===appt.chair&&r.staffAssign?.role==="Dr")?.matchedStaff||null,
+          // アシスト: Drチェアは専用振り分け、それ以外は従来通り
+          assistStaff:drAst?.staff||null,
+          assistNote:drAst?.note||null,
           dhMatched:(results.find(r=>r.time===appt.time&&r.chair===appt.chair&&r.staffAssign?.role==="Dh")?.matchedStaff)
-            ||(anyAssignments.find(a=>a.time===appt.time&&a.chair===appt.chair)?.matchedStaff)||null,
+            ||(any?.matchedStaff)||null,
           dhPriorityNote:any?.priorityNote||null,
         });
       });
@@ -2726,7 +2753,7 @@ export default function App() {
                         const drChair=isDr(ch);
                         return (
                           <div key={ch} style={{
-                            minWidth:110, maxWidth:140,
+                            minWidth:drChair?130:110, maxWidth:drChair?155:135,
                             flex:"0 0 auto",
                             border:"1px solid #e2e8f0",borderRadius:8,background:"#fff",
                           }}>
@@ -2748,36 +2775,56 @@ export default function App() {
                                 {appt.patientId&&<div style={{fontSize:10,color:"#94a3b8"}}>{appt.patientId}</div>}
                                 {drChair?(
                                   <>
-                                    {/* Drチェア: アシスト枠 */}
+                                    {/* Dr選択枠 */}
                                     <div style={{marginTop:3}}>
-                                      <div style={{fontSize:9,color:"#1d4ed8",fontWeight:700}}>アシスト</div>
-                                      <div style={{
-                                        padding:"2px 4px",borderRadius:4,fontSize:10,fontWeight:700,
-                                        background:appt.dhMatched?(appt.dhPriorityNote?"#fef3c7":"#dbeafe"):"#f3f4f6",
-                                        color:appt.dhMatched?(appt.dhPriorityNote?"#d97706":"#1d4ed8"):"#94a3b8",
-                                      }}>
-                                        {appt.dhMatched?(
-                                          <>{appt.dhMatched.name}{appt.dhPriorityNote&&<span style={{fontSize:8}}> ★</span>}</>
-                                        ):appt.dhStaff?(
-                                          appt.dhStaff.isAny?"未配置":appt.dhStaff.name
-                                        ):"—"}
-                                      </div>
-                                    </div>
-                                    {/* Drチェア: 人員枠（手動選択） */}
-                                    <div style={{marginTop:2}}>
-                                      <div style={{fontSize:9,color:"#15803d",fontWeight:700}}>人員</div>
+                                      <div style={{fontSize:9,color:"#b91c1c",fontWeight:700}}>Dr</div>
                                       <select
-                                        value={drExtra[`${ch}_${appt.time}`]||""}
-                                        onChange={e=>setDrExtra(prev=>({...prev,[`${ch}_${appt.time}`]:e.target.value}))}
+                                        value={drExtra[`dr_${ch}_${appt.time}`]||(appt.drMatched?.id||appt.drStaff?.name||"")}
+                                        onChange={e=>setDrExtra(prev=>({...prev,[`dr_${ch}_${appt.time}`]:e.target.value}))}
                                         style={{
                                           width:"100%",padding:"2px 2px",borderRadius:4,fontSize:10,fontWeight:700,
-                                          border:"1px solid #d1d5db",background:drExtra[`${ch}_${appt.time}`]?"#dcfce7":"#fff",
-                                          color:drExtra[`${ch}_${appt.time}`]?"#15803d":"#94a3b8",
+                                          border:"1px solid #d1d5db",
+                                          background:drExtra[`dr_${ch}_${appt.time}`]||appt.drMatched||appt.drStaff?"#fee2e2":"#fff",
+                                          color:drExtra[`dr_${ch}_${appt.time}`]||appt.drMatched||appt.drStaff?"#b91c1c":"#94a3b8",
                                           cursor:"pointer",
                                         }}
                                       >
                                         <option value="">— 選択 —</option>
-                                        {R.workingStaff.map(s=>(
+                                        {appt.drStaff&&!appt.drMatched&&<option value={appt.drStaff.name}>{appt.drStaff.name}（PDF）</option>}
+                                        {R.workingDr.map(s=>(
+                                          <option key={s.id} value={s.id}>{s.name.split(" ")[0]}</option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    {/* アシスト選択枠 */}
+                                    <div style={{marginTop:2}}>
+                                      <div style={{fontSize:9,color:"#15803d",fontWeight:700}}>アシスト</div>
+                                      <select
+                                        value={drExtra[`ast_${ch}_${appt.time}`]||(appt.assistStaff?.id||"")}
+                                        onChange={e=>setDrExtra(prev=>({...prev,[`ast_${ch}_${appt.time}`]:e.target.value}))}
+                                        style={{
+                                          width:"100%",padding:"2px 2px",borderRadius:4,fontSize:10,fontWeight:700,
+                                          border:"1px solid #d1d5db",
+                                          background:(()=>{
+                                            const v=drExtra[`ast_${ch}_${appt.time}`]||appt.assistStaff?.id;
+                                            if(!v) return "#fff";
+                                            return appt.assistNote?"#fef3c7":"#dcfce7";
+                                          })(),
+                                          color:(()=>{
+                                            const v=drExtra[`ast_${ch}_${appt.time}`]||appt.assistStaff?.id;
+                                            if(!v) return "#94a3b8";
+                                            return appt.assistNote?"#d97706":"#15803d";
+                                          })(),
+                                          cursor:"pointer",
+                                        }}
+                                      >
+                                        <option value="">— 選択 —</option>
+                                        {appt.assistStaff&&(
+                                          <option value={appt.assistStaff.id}>
+                                            {ROLES[appt.assistStaff.role]?.short||""} {appt.assistStaff.name.split(" ")[0]}{appt.assistNote?" ★":""}（自動）
+                                          </option>
+                                        )}
+                                        {[...R.workingDa,...R.workingDh,...R.workingUketsuke].map(s=>(
                                           <option key={s.id} value={s.id}>{ROLES[s.role]?.short||s.role} {s.name.split(" ")[0]}</option>
                                         ))}
                                       </select>
