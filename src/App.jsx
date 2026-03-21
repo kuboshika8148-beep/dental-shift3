@@ -197,20 +197,6 @@ function autoSchedule(y,m,staff,minStaff,kyoseiAssignedManual={},kyoseiRestManua
       // 定休（全日）
       if(restEntry?.type==="全日"){ shifts[`${s.id}_${d}`]="休み"; return; }
 
-      // 矯正日
-      if(ki){
-        if(kyoseiAssigned[d]===s.id){
-          shifts[`${s.id}_${d}`]=ki.type==="土"?"矯正当番_土":"矯正当番_木";
-          return;
-        }
-        if(kyoseiRestManual[s.id]?.has(d)){
-          shifts[`${s.id}_${d}`]="休み"; return;
-        }
-        if(isHalfAM){ shifts[`${s.id}_${d}`]="午前半休"; return; }
-        if(isHalfPM){ shifts[`${s.id}_${d}`]="午後半休"; return; }
-        shifts[`${s.id}_${d}`]=dow===6?"土曜出勤":"出勤"; return;
-      }
-
       // 通常日（土曜含む）
       if(isHalfAM){
         shifts[`${s.id}_${d}`]="午前半休";
