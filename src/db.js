@@ -544,3 +544,68 @@ export function useVisits() {
 
   return [visits, setVisits];
 }
+
+// ═══════════════════════════════════════════════════════
+// useMeetings: meetings + meeting_staff
+// 返り値: [meetings[], setMeetings]
+// meetings = [{id, name, date, start, end, breakMin, staffIds:[]}]
+// ═══════════════════════════════════════════════════════
+export function useMeetings() {
+  const [meetings, _setMeetings] = useState(() => lsGet("db_meetings", []));
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data: rows } = await supabase.from("meetings").select("*, meeting_staff(staff_id)").order("date");
+      if (cancelled || !rows) return;
+      const arr = rows.map(r => ({
+        id: r.id, name: r.name, date: r.date, start: r.start_time, end: r.end_time,
+        breakMin: r.break_min, staffIds: (r.meeting_staff || []).map(ms => ms.staff_id),
+      }));
+      _setMeetings(arr);
+      lsSet("db_meetings", arr);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const setMeetings = useCallback((v) => {
+    _setMeetings(prev => {
+      const next = typeof v === "function" ? v(prev) : v;
+      lsSet("db_meetings", next);
+      withSaveCount((async () => {
+        const prevIds = new Set(prev.map(s => s.id));
+        const nextIds = new Set(next.map(s => s.id));
+        for (const s of prev) {
+          if (!nextIds.has(s.id)) await supabase.from("meetings").delete().eq("id", s.id);
+        }
+        for (const s of next) {
+          if (!prevIds.has(s.id)) {
+            const { data } = await supabase.from("meetings").insert({
+              name: s.name || "院内ミーティング", date: s.date, start_time: s.start, end_time: s.end, break_min: s.breakMin || 0,
+            }).select("id").single();
+            if (data) {
+              s.id = data.id;
+              if (s.staffIds.length > 0) {
+                await supabase.from("meeting_staff").insert(s.staffIds.map(sid => ({ meeting_id: data.id, staff_id: sid })));
+              }
+            }
+          } else {
+            const old = prev.find(p => p.id === s.id);
+            if (!old || JSON.stringify(old) !== JSON.stringify(s)) {
+              await supabase.from("meetings").update({
+                name: s.name || "院内ミーティング", date: s.date, start_time: s.start, end_time: s.end, break_min: s.breakMin || 0,
+              }).eq("id", s.id);
+              await supabase.from("meeting_staff").delete().eq("meeting_id", s.id);
+              if (s.staffIds.length > 0) {
+                await supabase.from("meeting_staff").insert(s.staffIds.map(sid => ({ meeting_id: s.id, staff_id: sid })));
+              }
+            }
+          }
+        }
+      })());
+      return next;
+    });
+  }, []);
+
+  return [meetings, setMeetings];
+}

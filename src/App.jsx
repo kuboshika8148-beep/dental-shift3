@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { supabase } from "./supabase.js";
-import { useStaff, useShifts, useWishes, useSettings, useHolidays, useKyoseiOverrides, useSeminars, useVisits, onSaveChange, getPendingSaves } from "./db.js";
+import { useStaff, useShifts, useWishes, useSettings, useHolidays, useKyoseiOverrides, useSeminars, useVisits, useMeetings, onSaveChange, getPendingSaves } from "./db.js";
 import * as pdfjsLib from "pdfjs-dist";
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
 
@@ -739,6 +739,8 @@ export default function App() {
   const [semModal, setSemModal] = useState(null);
   const [visits, setVisits] = useVisits();
   const [visitModal, setVisitModal] = useState(null);
+  const [meetings, setMeetings] = useMeetings();
+  const [mtgModal, setMtgModal] = useState(null);
   const [idModal, setIdModal] = useState(null);
   const [pendingSaves, setPendingSaves] = useState(0);
   const [ctxMenu, setCtxMenu] = useState(null); // {staffId, x, y}
@@ -966,6 +968,7 @@ export default function App() {
               </button>
             )}
             {isA&&<button className="pbtn" style={{background:"#7e22ce",color:"#fff"}} onClick={()=>setSemModal("add")}>🎓 セミナー追加</button>}
+            {isA&&<button className="pbtn" style={{background:"#0d9488",color:"#fff"}} onClick={()=>setMtgModal("add")}>🏥 ミーティング追加</button>}
             {isA&&<button className="pbtn" style={{background:"#0369a1",color:"#fff"}} onClick={()=>setVisitModal("add")}>🏠 訪問追加</button>}
             {isA&&<button className="pbtn" style={{background:calStart===11?"#f59e0b":"#e2e8f0",color:calStart===11?"#fff":"#374151"}}
               onClick={()=>setCalStart(c=>c===1?11:1)}>
@@ -1004,6 +1007,42 @@ export default function App() {
                   {participants.map(s=>(
                     <span key={s.id} style={{fontSize:9,background:"#fff",border:"1px solid #d8b4fe",
                       color:"#9333ea",borderRadius:10,padding:"1px 6px",fontWeight:600}}>{s.name}</span>
+                  ))}
+                </div>
+              </div>
+            );
+          });
+        })()}
+
+        {/* ミーティングカード（今月分） */}
+        {(()=>{
+          const mtgItems=meetings.filter(mt=>{const md=new Date(mt.date);return md.getFullYear()===year&&md.getMonth()===month;}).sort((a,b)=>new Date(a.date)-new Date(b.date));
+          if(mtgItems.length===0) return null;
+          return mtgItems.map(item=>{
+            const d=new Date(item.date).getDate();
+            const dow=DAYS_JP[new Date(item.date).getDay()];
+            const participants=staff.filter(s=>item.staffIds.includes(s.id));
+            return (
+              <div key={item.id} style={{background:"#f0fdfa",border:"1.5px solid #5eead4",borderRadius:10,
+                padding:"8px 12px",marginBottom:6,display:"flex",flexDirection:"column",gap:4}}>
+                <div style={{display:"flex",alignItems:"center",gap:5}}>
+                  <span style={{fontSize:13}}>🏥</span>
+                  <span style={{fontWeight:800,fontSize:11,color:"#0d9488"}}>{item.name}</span>
+                  <span style={{fontSize:10,color:"#64748b",marginLeft:4}}>{month+1}/{d}（{dow}）{item.start}〜{item.end}</span>
+                  {isA&&(
+                    <span style={{marginLeft:"auto",display:"flex",gap:4}}>
+                      <button style={{fontSize:8,padding:"1px 6px",borderRadius:4,border:"1px solid #5eead4",background:"#fff",color:"#0d9488",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}
+                        onClick={()=>setMtgModal(item.id)}>編集</button>
+                      <button style={{fontSize:8,padding:"1px 6px",borderRadius:4,border:"1px solid #fca5a5",background:"#fff",color:"#dc2626",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}
+                        onClick={()=>{if(window.confirm("削除しますか？")){setMeetings(ps=>ps.filter(x=>x.id!==item.id));}}}>削除</button>
+                    </span>
+                  )}
+                </div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:3,alignItems:"center"}}>
+                  <span style={{fontSize:9,color:"#0d9488",fontWeight:700}}>参加：</span>
+                  {participants.map(s=>(
+                    <span key={s.id} style={{fontSize:9,background:"#fff",border:"1px solid #5eead4",
+                      color:"#0d9488",borderRadius:10,padding:"1px 6px",fontWeight:600}}>{s.name}</span>
                   ))}
                 </div>
               </div>
@@ -3260,6 +3299,79 @@ export default function App() {
                 </div>
                 <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:4}}>
                   <button className="mcan" onClick={()=>setSemModal(null)}>キャンセル</button>
+                  <button className="svbtn" onClick={save}>{isEdit?"更新":"追加"}</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ミーティングモーダル */}
+      {mtgModal&&isA&&(()=>{
+        const isEdit=mtgModal!=="add";
+        const existing=isEdit?meetings.find(s=>s.id===mtgModal):null;
+        const initDate=existing?.date||(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;})();
+        const save=()=>{
+          const fd=document.getElementById("mtg-form");
+          const name=fd.querySelector("#mtg-name").value.trim()||"院内ミーティング";
+          const date=fd.querySelector("#mtg-date").value;
+          const start=fd.querySelector("#mtg-start").value;
+          const end=fd.querySelector("#mtg-end").value;
+          const staffIds=[...fd.querySelectorAll(".mtg-staff-btn.on")].map(b=>Number(b.dataset.id));
+          if(!date){toast_("日付を入力してください");return;}
+          if(staffIds.length===0){toast_("参加スタッフを選択してください");return;}
+          if(isEdit){
+            setMeetings(ps=>ps.map(s=>s.id===mtgModal?{...s,name,date,start,end,staffIds}:s));
+            toast_("ミーティングを更新しました");
+          } else {
+            setMeetings(ps=>[...ps,{id:Date.now(),name,date,start,end,staffIds}]);
+            toast_("ミーティングを追加しました");
+          }
+          setMtgModal(null);
+        };
+        return (
+          <div className="sem-modal-ov" onClick={()=>setMtgModal(null)}>
+            <div className="sem-modal" onClick={e=>e.stopPropagation()}>
+              <h3>🏥 {isEdit?"ミーティング編集":"ミーティング追加"}</h3>
+              <div className="sem-form" id="mtg-form">
+                <div>
+                  <label>ミーティング名</label>
+                  <input id="mtg-name" defaultValue={existing?.name||"院内ミーティング"} placeholder="例：院内ミーティング"/>
+                </div>
+                <div className="sem-row">
+                  <div>
+                    <label>日付</label>
+                    <input id="mtg-date" type="date" defaultValue={existing?.date||initDate}/>
+                  </div>
+                  <div>
+                    <label>開始時間</label>
+                    <input id="mtg-start" type="time" defaultValue={existing?.start||"13:00"}/>
+                  </div>
+                  <div>
+                    <label>終了時間</label>
+                    <input id="mtg-end" type="time" defaultValue={existing?.end||"14:00"}/>
+                  </div>
+                </div>
+                <div>
+                  <label>参加スタッフ（複数選択可）</label>
+                  <div className="sem-staff-grid">
+                    {staff.filter(s=>s.active).map(s=>{
+                      const on=(existing?.staffIds||[]).includes(s.id);
+                      const rv=ROLES[s.role];
+                      return (
+                        <button key={s.id} type="button" data-id={s.id}
+                          className={`mtg-staff-btn sem-staff-btn ${on?"on":""}`}
+                          onClick={e=>{e.currentTarget.classList.toggle("on");}}>
+                          <span style={{fontSize:8,marginRight:3,background:rv.bg,color:rv.color,padding:"0 3px",borderRadius:3,fontWeight:800}}>{s.role}</span>
+                          {s.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:4}}>
+                  <button className="mcan" onClick={()=>setMtgModal(null)}>キャンセル</button>
                   <button className="svbtn" onClick={save}>{isEdit?"更新":"追加"}</button>
                 </div>
               </div>
