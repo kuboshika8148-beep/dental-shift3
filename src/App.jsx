@@ -181,81 +181,7 @@ function autoSchedule(y,m,staff,minStaff,kyoseiAssignedManual={},kyoseiRestManua
     weekAllDays[wk].push(d);
   }
 
-  // ── スタッフごとに週休日を事前決定 ──
-  // weeklyDaysOff=2:   週2日休み → 営業日から2日休む
-  // weeklyDaysOff=2.5: 週2.5日休み → 1日＋半日休む（全日1日＋半日1日）
-  // weeklyDaysOff=3:   週3日休み → 営業日から3日休む
-  // weeklyDaysOff=null（パート）: 定休のみ
-  const restDaysSet={};   // staffId -> Set<day>  全日休み
-  const halfDaysSet={};   // staffId -> Set<day>  半日休み（午前or午後）
-  staff.forEach(s=>{
-    restDaysSet[s.id]=new Set();
-    halfDaysSet[s.id]=new Set();
-    if(!s.weeklyDaysOff) return;
-
-    const is25 = s.weeklyDaysOff===2.5;
-    // 2.5日 → 全日1日+半日1日 = 実質2日分の処理
-    // 2日  → 全日2日
-    // 3日  → 全日3日
-    const fullDaysNeeded = is25 ? 1 : s.weeklyDaysOff;
-
-    Object.entries(weekAllDays).forEach(([wkStr,wkDays])=>{
-      // 定休（全日）に当たる日
-      const fixedRestDays=wkDays.filter(d=>{
-        const dow=new Date(y,m,d).getDay();
-        return (s.restDays||[]).some(r=>r.dow===dow&&r.type==="全日");
-      });
-      // 定休（半日）に当たる日
-      const fixedHalfDays=wkDays.filter(d=>{
-        const dow=new Date(y,m,d).getDay();
-        return (s.restDays||[]).some(r=>r.dow===dow&&(r.type==="午前"||r.type==="午後"));
-      });
-
-      // 変更可能な日（定休・矯正当番以外）
-      const flexible=wkDays.filter(d=>{
-        if(fixedRestDays.includes(d)) return false;
-        if(fixedHalfDays.includes(d)) return false;
-        if(kyoseiAssigned[d]===s.id) return false;
-        return true;
-      });
-
-      const sats=flexible.filter(d=>new Date(y,m,d).getDay()===6);
-      const weekdays=flexible.filter(d=>new Date(y,m,d).getDay()!==6);
-      // 全日を混ぜてローテーション（土曜を先頭固定にしない）
-      const allFlexible=[...weekdays,...sats]; // 平日→土曜の順で並べ
-      const offset=(s.id*3+Number(wkStr))%Math.max(allFlexible.length,1);
-      const candidates=[...allFlexible.slice(offset),...allFlexible.slice(0,offset)];
-
-      // 全日休みを追加
-      // 端数週対策：営業日が少ない週は休みを取りすぎないよう上限を設ける
-      // （例: 月・火の2日しかない週で週休2日を適用すると全員休みになる）
-      const workabledays = flexible.length + fixedRestDays.length; // その週の実質営業日数
-      const maxRestThisWeek = Math.max(0, workabledays - 1); // 最低1日は出勤
-      const extraFullNeeded = Math.min(
-        Math.max(0, fullDaysNeeded - fixedRestDays.length),
-        Math.max(0, maxRestThisWeek - fixedRestDays.length)
-      );
-      let taken=0;
-      for(const d of candidates){
-        if(taken>=extraFullNeeded) break;
-        restDaysSet[s.id].add(d);
-        taken++;
-      }
-
-      // 週休2.5日の場合、さらに半日休みを1日追加
-      if(is25){
-        const usedDays=new Set([...fixedRestDays,...restDaysSet[s.id]]);
-        const halfCandidates=wkDays.filter(d=>!usedDays.has(d)&&kyoseiAssigned[d]!==s.id);
-        // 半日はスタッフIDと週で交互に午前/午後を切り替え
-        if(halfCandidates.length>0){
-          const halfIdx=(s.id+Number(wkStr))%halfCandidates.length;
-          halfDaysSet[s.id].add(halfCandidates[halfIdx]);
-        }
-      }
-    });
-  });
-
-  // ── シフト生成 ──
+  // ── シフト生成（休みは固定休みのみ） ──
   for(let d=1;d<=total;d++){
     const dow=new Date(y,m,d).getDay();
     const hol=isHoliday(y,m,d);
@@ -271,26 +197,17 @@ function autoSchedule(y,m,staff,minStaff,kyoseiAssignedManual={},kyoseiRestManua
       // 定休（全日）
       if(restEntry?.type==="全日"){ shifts[`${s.id}_${d}`]="休み"; return; }
 
-      // 全日休み（週休割当）
-      if(restDaysSet[s.id].has(d)){ shifts[`${s.id}_${d}`]="休み"; return; }
-
       // 矯正日
       if(ki){
         if(kyoseiAssigned[d]===s.id){
-          // 当番：土曜矯正は矯正当番_土、木曜は矯正当番_木
           shifts[`${s.id}_${d}`]=ki.type==="土"?"矯正当番_土":"矯正当番_木";
           return;
         }
         if(kyoseiRestManual[s.id]?.has(d)){
           shifts[`${s.id}_${d}`]="休み"; return;
         }
-        // 矯正日の非当番：半日設定があれば半日、なければ通常出勤
         if(isHalfAM){ shifts[`${s.id}_${d}`]="午前半休"; return; }
         if(isHalfPM){ shifts[`${s.id}_${d}`]="午後半休"; return; }
-        if(halfDaysSet[s.id]?.has(d)){
-          shifts[`${s.id}_${d}`]=s.id%2===1?"午前半休":"午後半休"; return;
-        }
-        // 矯正日非当番の通常出勤（土曜は土曜出勤）
         shifts[`${s.id}_${d}`]=dow===6?"土曜出勤":"出勤"; return;
       }
 
@@ -299,8 +216,6 @@ function autoSchedule(y,m,staff,minStaff,kyoseiAssignedManual={},kyoseiRestManua
         shifts[`${s.id}_${d}`]="午前半休";
       } else if(isHalfPM){
         shifts[`${s.id}_${d}`]="午後半休";
-      } else if(halfDaysSet[s.id]?.has(d)){
-        shifts[`${s.id}_${d}`]=s.id%2===1?"午前半休":"午後半休";
       } else {
         shifts[`${s.id}_${d}`]=dow===6?"土曜出勤":"出勤";
       }
