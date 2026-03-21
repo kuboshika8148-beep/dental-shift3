@@ -38,6 +38,7 @@ const SHIFT_TYPES = {
   有給:        { label:"有給",              color:"#d97706", bg:"#fef3c7",  hours:0    },
   午前半休:    { label:"午後出勤（午前休）", color:"#c2410c", bg:"#ffedd5",  hours:4.125 },
   午後半休:    { label:"午前出勤（午後休）", color:"#a16207", bg:"#fef9c3",  hours:4.125 },
+  "17時まで":  { label:"17時まで勤務",      color:"#4338ca", bg:"#e0e7ff",  hours:7.25  },
 };
 
 const DAYS_JP = ["日","月","火","水","木","金","土"];
@@ -693,6 +694,7 @@ function shiftLabel(key) {
   if(key==="午前のみ")    return "午前";
   if(key==="午前半休")    return "午後出";
   if(key==="午後半休")    return "午前出";
+  if(key==="17時まで")   return "17時";
   return key[0];
 }
 
