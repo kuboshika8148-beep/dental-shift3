@@ -197,6 +197,13 @@ function autoSchedule(y,m,staff,minStaff,kyoseiAssignedManual={},kyoseiRestManua
       // 定休（全日）
       if(restEntry?.type==="全日"){ shifts[`${s.id}_${d}`]="休み"; return; }
 
+      // 矯正日（当番なし：出勤者全員に矯正シフトを適用）
+      if(ki){
+        if(isHalfAM){ shifts[`${s.id}_${d}`]="午前半休"; return; }
+        if(isHalfPM){ shifts[`${s.id}_${d}`]="午後半休"; return; }
+        shifts[`${s.id}_${d}`]=ki.type==="土"?"矯正当番_土":"矯正当番_木"; return;
+      }
+
       // 通常日（土曜含む）
       if(isHalfAM){
         shifts[`${s.id}_${d}`]="午前半休";
@@ -1485,7 +1492,7 @@ export default function App() {
 
     return (
       <div>
-        <div className="ph"><div className="ptitle">矯正当番</div></div>
+        <div className="ph"><div className="ptitle">矯正日管理</div></div>
 
         {/* 矯正日管理 */}
         <div className="krot-wrap" style={{marginBottom:14}}>
@@ -1595,112 +1602,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* 当番割り当て＆休み入力 */}
-        {schedule.length>0&&(
-          <div className="krot-wrap">
-            <div className="cpt">🦷 矯正当番 割り当て＆休み入力</div>
-            <div style={{fontSize:11,color:"var(--mut)",marginBottom:12}}>
-              当番者を選び、休む人をタップ→「✅ 適用」で一括反映します。
-            </div>
-            {schedule.map(({day,ki,tban})=>{
-              const allActive=staff.filter(s=>s.active);
-              const dow=new Date(year,month,day).getDay();
-              const currentRest=allActive.filter(s=>shifts[`${s.id}_${day}`]==="休み").map(s=>s.id);
-              return (
-                <div key={day} style={{background:"#f8fafc",border:"1px solid #e2e8f0",
-                  borderRadius:10,padding:"12px 14px",marginBottom:10}}>
-                  {/* ヘッダー */}
-                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}>
-                    <span style={{fontWeight:800,fontSize:12,color:"#065f46"}}>
-                      {month+1}/{day}（{ki.label}）
-                    </span>
-                    <span style={{fontSize:10,color:"#047857"}}>{ki.type==="土"?"14:00〜17:30":"14:00〜18:30"}</span>
-                    {/* 当番者セレクト */}
-                    <div style={{display:"flex",alignItems:"center",gap:5,marginLeft:"auto"}}>
-                      <span style={{fontSize:9,fontWeight:700,color:"var(--mut)"}}>当番:</span>
-                      <select
-                        value={tban?.id||""}
-                        onChange={e=>{
-                          const sid=Number(e.target.value);
-                          setShifts(prev=>{
-                            const next={...prev};
-                            allActive.forEach(s=>{
-                              const k=`${s.id}_${year}_${month}_${day}`;
-                              if(next[k]==="矯正当番_土"||next[k]==="矯正当番_木") delete next[k];
-                            });
-                            if(sid) next[`${sid}_${year}_${month}_${day}`]=ki.type==="土"?"矯正当番_土":"矯正当番_木";
-                            return next;
-                          });
-                          const s=staff.find(x=>x.id===sid);
-                          toast_(sid?`${s?.name} を当番に設定しました`:"当番をクリアしました");
-                        }}
-                        style={{padding:"4px 8px",border:"1.5px solid #6ee7b7",borderRadius:6,
-                          fontSize:11,fontFamily:"inherit",background:"#f0fdfa",color:"#065f46",fontWeight:700}}>
-                        <option value="">-- 未設定 --</option>
-                        {eligible.map(s=>{
-                          const rv=ROLES[s.role];
-                          return <option key={s.id} value={s.id}>{s.name}（{rv.short}）</option>;
-                        })}
-                      </select>
-                    </div>
-                    <button className="svbtn" style={{fontSize:10,padding:"5px 12px"}}
-                      onClick={()=>{
-                        const restIds=new Set(
-                          allActive.filter(s=>{
-                            const btn=document.getElementById(`kyrest_${day}_${s.id}`);
-                            return btn?.dataset.on==="1";
-                          }).map(s=>s.id)
-                        );
-                        setShifts(prev=>{
-                          const next={...prev};
-                          allActive.forEach(s=>{
-                            const key=`${s.id}_${day}`;
-                            if(restIds.has(s.id)){
-                              next[key]="休み";
-                            } else if(s.id===tban?.id){
-                              next[key]=ki.type==="土"?"矯正当番_土":"矯正当番_木";
-                            } else {
-                              next[key]=dow===6?"土曜出勤":"出勤";
-                            }
-                          });
-                          return next;
-                        });
-                        toast_(`${month+1}/${day} のシフトを適用しました`);
-                      }}>✅ 適用</button>
-                  </div>
-                  {/* 休む人選択 */}
-                  <div style={{fontSize:9,color:"var(--mut)",fontWeight:700,marginBottom:6}}>休む人をタップ（青=休み）</div>
-                  <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-                    {allActive.map(s=>{
-                      const rv=ROLES[s.role];
-                      const isRest=currentRest.includes(s.id);
-                      return (
-                        <button key={s.id} id={`kyrest_${day}_${s.id}`}
-                          data-on={isRest?"1":"0"} type="button"
-                          style={{padding:"4px 9px",borderRadius:6,
-                            border:`1.5px solid ${isRest?"#0f4c8a":"#e2e8f0"}`,
-                            background:isRest?"#0f4c8a":"#f8fafc",
-                            color:isRest?"#fff":"#374151",
-                            fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}
-                          onClick={e=>{
-                            const on=e.currentTarget.dataset.on==="1";
-                            e.currentTarget.dataset.on=on?"0":"1";
-                            e.currentTarget.style.background=on?"#f8fafc":"#0f4c8a";
-                            e.currentTarget.style.color=on?"#374151":"#fff";
-                            e.currentTarget.style.borderColor=on?"#e2e8f0":"#0f4c8a";
-                          }}>
-                          <span style={{fontSize:8,marginRight:3,background:rv.bg,color:rv.color,
-                            padding:"0 3px",borderRadius:3,fontWeight:800}}>{s.role}</span>
-                          {s.name}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
       </div>
     );
   };
@@ -3091,7 +2992,7 @@ export default function App() {
 
   const aTabs=[
     {id:"shift",label:"シフト表"},
-    {id:"kyosei",label:"矯正当番"},
+    {id:"kyosei",label:"矯正日"},
     {id:"flex",label:"変形労働時間"},
     {id:"paid",label:"有給管理"},
     {id:"appt",label:"予約照合"},
