@@ -1826,8 +1826,9 @@ export default function App() {
               <input type="number" value={newSt.joinYear} onChange={e=>setNewSt(n=>({...n,joinYear:Number(e.target.value)}))} min="1990" max="2099"/>
             </div>
             <div className="aff" style={{maxWidth:100}}><label>雇用形態</label>
-              <select value={newSt.employment} onChange={e=>setNewSt(n=>({...n,employment:e.target.value,weeklyDaysOff:e.target.value==="正社員"?2:null}))}>
+              <select value={newSt.employment} onChange={e=>setNewSt(n=>({...n,employment:e.target.value,weeklyDaysOff:e.target.value==="パート"?null:2}))}>
                 <option value="正社員">正社員</option>
+                <option value="17時まで">17時まで勤務</option>
                 <option value="パート">パート</option>
               </select>
             </div>
