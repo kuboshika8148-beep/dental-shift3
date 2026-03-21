@@ -726,7 +726,7 @@ export default function App() {
   const [modal,   setModal]   = useState(null);
   const [wModal,  setWModal]  = useState(null);
   const [addSt,   setAddSt]   = useState(false);
-  const [newSt,   setNewSt]   = useState({name:"",role:"Dh",leave:10,birthDate:"",joinYear:new Date().getFullYear(),employment:"正社員",weeklyDaysOff:2,restDays:[]});
+  const [newSt,   setNewSt]   = useState({name:"",role:"Dh",leave:10,birthDate:"",joinYear:new Date().getFullYear(),employment:"正社員",weeklyDaysOff:2,restDays:[],partAmStart:"",partAmEnd:"",partPmStart:"",partPmEnd:""});
   const [kotData, setKotData] = useState(null);
   const [kotDrag, setKotDrag] = useState(false);
   const [apptData, setApptData] = useState(null);
@@ -1873,6 +1873,21 @@ export default function App() {
                 <option value="パート">パート</option>
               </select>
             </div>
+            {newSt.employment==="パート"&&(
+              <div className="aff" style={{minWidth:280}}>
+                <label>勤務時間</label>
+                <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                  <span style={{fontSize:10,fontWeight:700,color:"var(--mut)"}}>午前</span>
+                  <input type="time" value={newSt.partAmStart} onChange={e=>setNewSt(n=>({...n,partAmStart:e.target.value}))} style={{width:90,padding:"4px 6px",border:"1.5px solid #e2e8f0",borderRadius:6,fontSize:11,fontFamily:"inherit"}}/>
+                  <span style={{fontSize:10}}>〜</span>
+                  <input type="time" value={newSt.partAmEnd} onChange={e=>setNewSt(n=>({...n,partAmEnd:e.target.value}))} style={{width:90,padding:"4px 6px",border:"1.5px solid #e2e8f0",borderRadius:6,fontSize:11,fontFamily:"inherit"}}/>
+                  <span style={{fontSize:10,fontWeight:700,color:"var(--mut)",marginLeft:6}}>午後</span>
+                  <input type="time" value={newSt.partPmStart} onChange={e=>setNewSt(n=>({...n,partPmStart:e.target.value}))} style={{width:90,padding:"4px 6px",border:"1.5px solid #e2e8f0",borderRadius:6,fontSize:11,fontFamily:"inherit"}}/>
+                  <span style={{fontSize:10}}>〜</span>
+                  <input type="time" value={newSt.partPmEnd} onChange={e=>setNewSt(n=>({...n,partPmEnd:e.target.value}))} style={{width:90,padding:"4px 6px",border:"1.5px solid #e2e8f0",borderRadius:6,fontSize:11,fontFamily:"inherit"}}/>
+                </div>
+              </div>
+            )}
             {newSt.employment==="正社員"&&(
               <div className="aff" style={{maxWidth:100}}><label>週休日数</label>
                 <select value={newSt.weeklyDaysOff} onChange={e=>setNewSt(n=>({...n,weeklyDaysOff:Number(e.target.value)}))}>
@@ -1902,10 +1917,12 @@ export default function App() {
                 kyoseiOrder:isKyosei?maxOrd+1:null,
                 birthDate:newSt.birthDate, joinYear:newSt.joinYear,
                 employment:newSt.employment,
-                weeklyDaysOff:newSt.employment==="正社員"?newSt.weeklyDaysOff:null,
+                weeklyDaysOff:newSt.employment==="パート"?null:newSt.weeklyDaysOff,
+                partAmStart:newSt.partAmStart||"", partAmEnd:newSt.partAmEnd||"",
+                partPmStart:newSt.partPmStart||"", partPmEnd:newSt.partPmEnd||"",
                 restDays:newSt.restDays||[],
               }]);
-              setNewSt({name:"",role:"Dh",leave:10,birthDate:"",joinYear:new Date().getFullYear(),employment:"正社員",weeklyDaysOff:2,restDays:[]});
+              setNewSt({name:"",role:"Dh",leave:10,birthDate:"",joinYear:new Date().getFullYear(),employment:"正社員",weeklyDaysOff:2,restDays:[],partAmStart:"",partAmEnd:"",partPmStart:"",partPmEnd:""});
               setAddSt(false);
               toast_(`${newSt.name} を追加しました`);
             }}>追加</button>
@@ -1925,7 +1942,7 @@ export default function App() {
                   <div className="snm">{s.name}</div>
                   <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:3}}>
                     <span className="srl" style={{background:rv.bg,color:rv.color}}>{rv.short} {rv.label}</span>
-                    <span className="srl" style={{background:s.employment==="正社員"?"#dbeafe":"#fef3c7",color:s.employment==="正社員"?"#1d4ed8":"#b45309"}}>
+                    <span className="srl" style={{background:s.employment==="正社員"?"#dbeafe":s.employment==="17時まで"?"#e0e7ff":"#fef3c7",color:s.employment==="正社員"?"#1d4ed8":s.employment==="17時まで"?"#4338ca":"#b45309"}}>
                       {s.employment||"正社員"}
                     </span>
                     {s.employment==="正社員"&&s.weeklyDaysOff!=null&&(
@@ -1956,6 +1973,23 @@ export default function App() {
                       </div>
                     )}
                   </div>
+                  {/* パート勤務時間 */}
+                  {s.employment==="パート"&&(
+                    <div style={{marginTop:6,display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",fontSize:10}}>
+                      <span style={{fontWeight:700,color:"var(--mut)"}}>午前</span>
+                      <input type="time" value={s.partAmStart||""} onChange={e=>setStaff(ps=>ps.map(st=>st.id===s.id?{...st,partAmStart:e.target.value}:st))}
+                        style={{width:80,padding:"2px 4px",border:"1.5px solid #e2e8f0",borderRadius:5,fontSize:10,fontFamily:"inherit"}}/>
+                      <span>〜</span>
+                      <input type="time" value={s.partAmEnd||""} onChange={e=>setStaff(ps=>ps.map(st=>st.id===s.id?{...st,partAmEnd:e.target.value}:st))}
+                        style={{width:80,padding:"2px 4px",border:"1.5px solid #e2e8f0",borderRadius:5,fontSize:10,fontFamily:"inherit"}}/>
+                      <span style={{fontWeight:700,color:"var(--mut)",marginLeft:6}}>午後</span>
+                      <input type="time" value={s.partPmStart||""} onChange={e=>setStaff(ps=>ps.map(st=>st.id===s.id?{...st,partPmStart:e.target.value}:st))}
+                        style={{width:80,padding:"2px 4px",border:"1.5px solid #e2e8f0",borderRadius:5,fontSize:10,fontFamily:"inherit"}}/>
+                      <span>〜</span>
+                      <input type="time" value={s.partPmEnd||""} onChange={e=>setStaff(ps=>ps.map(st=>st.id===s.id?{...st,partPmEnd:e.target.value}:st))}
+                        style={{width:80,padding:"2px 4px",border:"1.5px solid #e2e8f0",borderRadius:5,fontSize:10,fontFamily:"inherit"}}/>
+                    </div>
+                  )}
                   {/* 定休曜日 */}
                   <div style={{marginTop:8}}>
                     {RestDayPicker({

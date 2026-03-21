@@ -45,6 +45,8 @@ export function useStaff(initStaff) {
         joinYear: r.join_year, employment: r.employment,
         weeklyDaysOff: r.weekly_days_off != null ? Number(r.weekly_days_off) : null,
         loginId: r.login_id || "", pin: r.pin || "",
+        partAmStart: r.part_am_start || "", partAmEnd: r.part_am_end || "",
+        partPmStart: r.part_pm_start || "", partPmEnd: r.part_pm_end || "",
         restDays: rdMap[r.id] || [],
       }));
       if (!cancelled) { _setStaff(merged); lsSet("db_staff", merged); }
@@ -66,6 +68,8 @@ export function useStaff(initStaff) {
             kyosei_order: s.kyoseiOrder, birth_date: s.birthDate || "",
             join_year: s.joinYear, employment: s.employment,
             weekly_days_off: s.weeklyDaysOff, login_id: s.loginId || null, pin: s.pin || null,
+            part_am_start: s.partAmStart || "", part_am_end: s.partAmEnd || "",
+            part_pm_start: s.partPmStart || "", part_pm_end: s.partPmEnd || "",
             updated_at: new Date().toISOString(),
           }, { onConflict: "id" });
           // restDays 同期
