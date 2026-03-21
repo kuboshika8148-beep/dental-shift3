@@ -3151,13 +3151,17 @@ export default function App() {
               <h3>{month+1}月{wModal.day}日の希望シフト</h3>
               <p>{DAYS_JP[new Date(year,month,wModal.day).getDay()]}曜日{kyoseiDays[wModal.day]&&` ／ ${kyoseiDays[wModal.day].label}矯正日`}</p>
               <div className="mbtns">
-                {Object.entries(SHIFT_TYPES).map(([k,v])=>(
-                  <button key={k} className="mbtn" style={{borderColor:v.color,color:v.color}}
+                {[
+                  {k:"有給",     label:"有給（全日）",   color:"#d97706"},
+                  {k:"午前半休", label:"午前休希望",     color:"#c2410c"},
+                  {k:"午後半休", label:"午後休希望",     color:"#a16207"},
+                ].map(({k,label,color})=>(
+                  <button key={k} className="mbtn" style={{borderColor:color,color}}
                     onClick={()=>{
                       setWishes(p=>{const n={...p};n[`${wModal.staffId}_${wModal.day}`]=k;return n;});
                       setWModal(null);toast_("希望シフトを入力しました");
                     }}>
-                    {v.label}{v.hours>0&&<small>{v.hours}h</small>}
+                    {label}
                   </button>
                 ))}
               </div>
